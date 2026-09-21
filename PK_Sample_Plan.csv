@@ -1,0 +1,6 @@
+cohort,visit,period,timepoint,sampleType,required
+,SCREENING,,,PD Biomarker,Y
+,WEEK 4,,PRE-DOSE,PK Trough,Y
+Cohort A,WEEK 4,,2H POST,PK Peak,Y
+,WEEK 8,,,PK Trough,Y
+Cohort A,WEEK 8,,,PK Peak,Y

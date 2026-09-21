@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P21 Reconciliation — Proof of Concept</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --navy: #0b2a4a; --blue: #1568b8; --lightblue: #eaf2fb; --border: #d7dee6;
+    --red: #c0392b; --amber: #b8860b; --green: #1e8449; --gray: #6b7785; --bg: #f6f8fa;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; background: var(--bg); color: #1b2430; margin: 0; }
+  header { background: var(--navy); color: white; padding: 22px 32px; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 6px 0 0; color: #c9d9ea; font-size: 13.5px; max-width: 900px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 24px 60px; }
+  .stepper { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+  .step-pill { padding: 7px 14px; border-radius: 999px; background: white; border: 1px solid var(--border); font-size: 12.5px; color: var(--gray); }
+  .step-pill.active { background: var(--blue); color: white; border-color: var(--blue); font-weight: 600; }
+  .step-pill.done { background: var(--lightblue); color: var(--navy); border-color: #b9d3ef; }
+  .card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 20px 22px; margin-bottom: 18px; }
+  .card h2 { margin: 0 0 4px; font-size: 16.5px; color: var(--navy); }
+  .card .hint { color: var(--gray); font-size: 12.5px; margin: 0 0 16px; }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .upload-box { border: 1.5px dashed var(--border); border-radius: 8px; padding: 16px; background: #fbfcfd; }
+  .upload-box label.title { font-weight: 600; font-size: 13px; color: var(--navy); display: block; margin-bottom: 6px; }
+  .upload-box input[type=text] { width: 100%; margin-bottom: 10px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; }
+  .upload-box input[type=file] { font-size: 12.5px; }
+  .file-status { font-size: 12px; margin-top: 8px; color: var(--green); }
+  .btn { background: var(--blue); color: white; border: none; padding: 9px 18px; border-radius: 6px; font-size: 13.5px; cursor: pointer; font-weight: 600; }
+  .btn:hover { background: #0f4f8c; }
+  .btn.secondary { background: white; color: var(--blue); border: 1px solid var(--blue); }
+  .btn.secondary:hover { background: var(--lightblue); }
+  .btn:disabled { background: #c7ced6; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 10px; margin-top: 16px; justify-content: space-between; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+  th, td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; }
+  th { background: #f0f3f7; color: var(--navy); font-weight: 600; }
+  tr.dim { color: var(--gray); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .badge.high { background: #e3f5e9; color: var(--green); }
+  .badge.low { background: #fdf1de; color: var(--amber); }
+  .badge.err { background: #fbe6e4; color: var(--red); }
+  .badge.warn { background: #fdf1de; color: var(--amber); }
+  .badge.info { background: #e9eef5; color: var(--gray); }
+  select, input[type=number] { padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; font-size: 12.5px; }
+  .keyrow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .keyrow .arrow { color: var(--gray); }
+  .score-bar-wrap { width: 90px; height: 8px; background: #eef1f5; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px;}
+  .score-bar { height: 8px; background: var(--blue); }
+  .summary-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 12px; }
+  .summary-cell { background: #f7f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+  .summary-cell .num { font-size: 22px; font-weight: 700; color: var(--navy); }
+  .summary-cell .lbl { font-size: 11px; color: var(--gray); margin-top: 2px; }
+  .tabs { display: flex; gap: 6px; margin-top: 18px; border-bottom: 1px solid var(--border); }
+  .tab { padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--gray); border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--navy); font-weight: 600; border-bottom: 2px solid var(--blue); }
+  .tabpanel { display: none; }
+  .tabpanel.active { display: block; }
+  .mismatch-cell { background: #fbe6e4; }
+  .note { font-size: 11.5px; color: var(--gray); font-style: italic; }
+  .field-row { display: grid; grid-template-columns: 24px 110px 1fr 1fr 90px 90px; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .field-row.header-row { font-size: 11px; color: var(--gray); font-weight: 600; }
+  .banner { background: var(--lightblue); border: 1px solid #b9d3ef; border-radius: 8px; padding: 10px 14px; font-size: 12.5px; color: var(--navy); margin-bottom: 16px; }
+  .small { font-size: 11.5px; color: var(--gray); }
+  .plan-table input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px; font-size: 12px; }
+  footer { text-align: center; color: var(--gray); font-size: 11.5px; padding: 20px 0 40px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>P21 Reconciliation — Proof of Concept</h1>
+  <p>Reconciles a sample manifest / EDC extract against lab or vendor data — key matching, demographic cross-checks, and expected-sample validation.
+  Everything below runs in this browser tab only: files are parsed in memory, nothing is uploaded, stored, or sent anywhere. Close the tab and it's gone.</p>
+</header>
+
+<div class="wrap">
+  <div class="stepper" id="stepper"></div>
+
+  <!-- STEP 1: LOAD DATA -->
+  <section class="card" id="step1">
+    <h2>Step 1 — Load your two data sources</h2>
+    <p class="hint">Upload any CSV or Excel file for each side. Column names don't need to match — the next step figures that out for you. Or click "Load Demo Data" to try it instantly with a synthetic manifest-vs-lab dataset.</p>
+    <div class="cols2">
+      <div class="upload-box">
+        <label class="title">Source A</label>
+        <input type="text" id="labelA" value="Sample Manifest">
+        <input type="file" id="fileA" accept=".csv,.xlsx,.xls">
+        <div class="file-status" id="statusA"></div>
+      </div>
+      <div class="upload-box">
+        <label class="title">Source B</label>
+        <input type="text" id="labelB" value="Lab / Vendor Data">
+        <input type="file" id="fileB" accept=".csv,.xlsx,.xls">
+        <div class="file-status" id="statusB"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn secondary" id="loadDemoBtn">Load Demo Data</button>
+      <button class="btn" id="toStep2Btn" disabled>Next: Review Suggested Keys →</button>
+    </div>
+  </section>
+
+  <!-- STEP 2: KEYS -->
+  <section class="card" id="step2" style="display:none">
+    <h2>Step 2 — Confirm the matching keys</h2>
+    <p class="hint">Ranked by actual value overlap between the two files (not just column-name similarity) — the strongest evidence that two columns really are the same identifier.</p>
+    <div id="rankedPairsTable"></div>
+
+    <h2 style="margin-top:22px;">Primary key</h2>
+    <p class="hint">This should be the sample-level identifier (barcode / accession number) — the value that travels unchanged across sites, labs, and vendors regardless of how subject IDs are formatted.</p>
+    <div class="keyrow">
+      <label>Source A column:</label> <select id="primaryA"></select>
+      <span class="arrow">↔</span>
+      <label>Source B column:</label> <select id="primaryB"></select>
+      <span id="primaryScoreNote" class="note"></span>
+    </div>
+
+    <h2 style="margin-top:22px;">Fallback key <span class="small">(optional — used only when the primary key is blank on a record)</span></h2>
+    <div class="keyrow"><label style="width:80px">Subject:</label><select id="fbSubjA"></select><span class="arrow">↔</span><select id="fbSubjB"></select></div>
+    <div class="keyrow"><label style="width:80px">Visit:</label><select id="fbVisitA"></select><span class="arrow">↔</span><select id="fbVisitB"></select></div>
+    <div class="keyrow"><label style="width:80px">Sample type:</label><select id="fbTypeA"></select><span class="arrow">↔</span><select id="fbTypeB"></select></div>
+    <p class="small">Note: if subject-ID nomenclature genuinely differs between sources (site-formatted vs. lab-formatted, no shared crosswalk), the fallback key will legitimately rescue nothing — that's expected, and is itself evidence that accession-ID matching isn't optional here.</p>
+
+    <div class="btn-row">
+      <button class="btn secondary" id="backTo1">← Back</button>
+      <button class="btn" id="toStep3Btn">Next: Map Demographic Fields →</button>
+    </div>
+  </section>
+
+  <!-- STEP 3: FIELD MAPPING -->
+  <section class="card" id="step3" style="display:none">
+    <h2>Step 3 — Fields to cross-check</h2>
+    <p class="hint">Suggested from column names/categories. Uncheck anything irrelevant, adjust date tolerance where a few days' difference is acceptable, or add your own.</p>
+    <div class="field-row header-row"><span></span><span>Label</span><span>Source A column</span><span>Source B column</span><span>Type</span><span>Tolerance (days)</span></div>
+    <div id="fieldRows"></div>
+    <button class="btn secondary" id="addFieldBtn" style="margin-top:8px;">+ Add field</button>
+    <div class="btn-row">
+      <button class="btn secondary" id="backTo2">← Back</button>
+      <button class="btn" id="runReconBtn">Run Reconciliation →</button>
+    </div>
+  </section>
+
+  <!-- STEP 4: RESULTS -->
+  <section class="card" id="step4" style="display:none">
+    <h2>Step 4 — Reconciliation results</h2>
+    <div class="summary-grid" id="summaryGrid"></div>
+
+    <div class="tabs" id="resultTabs">
+      <div class="tab active" data-tab="matched">Matched</div>
+      <div class="tab" data-tab="missingB">Missing in Source B</div>
+      <div class="tab" data-tab="missingA">Missing in Source A</div>
+      <div class="tab" data-tab="dupes">Duplicate Keys</div>
+    </div>
+    <div class="tabpanel active" id="panel-matched"></div>
+    <div class="tabpanel" id="panel-missingB"></div>
+    <div class="tabpanel" id="panel-missingA"></div>
+    <div class="tabpanel" id="panel-dupes"></div>
+
+    <div class="btn-row">
+      <button class="btn secondary" id="exportReconBtn">Export Findings (CSV)</button>
+      <button class="btn" id="toStep5Btn">Next: Expected-Sample Check →</button>
+    </div>
+  </section>
+
+  <!-- STEP 5: EXPECTED SAMPLE -->
+  <section class="card" id="step5" style="display:none">
+    <h2>Step 5 — Expected-sample reconciliation</h2>
+    <p class="hint">Independent of the identity-matching problem above: this checks whether each subject has every sample their cohort's plan expects — the same question as "were these samples expected, and do they exist." A plan (and any value aliases below) is safe to store/reuse — it's a protocol template, not subject data.</p>
+
+    <div class="keyrow">
+      <label>Check presence in:</label>
+      <select id="expSource"><option value="A">Source A</option><option value="B">Source B</option></select>
+      <label style="margin-left:14px;">Subject col:</label><select id="expSubjCol"></select>
+      <label>Visit col:</label><select id="expVisitCol"></select>
+      <label>Sample type col:</label><select id="expTypeCol"></select>
+    </div>
+    <div class="keyrow">
+      <label>Cohort/arm col:</label><select id="expCohortCol"></select>
+      <label style="margin-left:14px;">Period col:</label><select id="expPeriodCol"></select>
+      <label style="margin-left:14px;">Timepoint col:</label><select id="expTimepointCol"></select>
+      <span class="small">All three optional — pick "— none —" if the study doesn't need that dimension.</span>
+    </div>
+
+    <h2 style="margin-top:18px;">Sample plan</h2>
+    <p class="hint">Edit inline, or import a plan file below (columns can be named anything — you map them). Cohort/Period/Timepoint are optional per row: leave blank to mean "applies regardless." Required: Y = error if missing, W = warning, O = optional/informational.</p>
+
+    <div class="keyrow">
+      <label class="title" style="margin:0;">Import plan:</label>
+      <input type="file" id="planFile" accept=".csv,.xlsx,.xls">
+      <span class="file-status" id="planFileStatus"></span>
+    </div>
+    <div id="planMappingBox" style="display:none; margin-bottom:12px;">
+      <div class="keyrow">
+        <label>Cohort col:</label><select id="planMapCohort"></select>
+        <label>Visit col:</label><select id="planMapVisit"></select>
+        <label>Period col:</label><select id="planMapPeriod"></select>
+        <label>Timepoint col:</label><select id="planMapTimepoint"></select>
+        <label>Sample type col:</label><select id="planMapType"></select>
+        <label>Required col:</label><select id="planMapRequired"></select>
+        <button class="btn secondary" id="applyPlanMappingBtn">Use this file as the plan</button>
+      </div>
+    </div>
+
+    <table class="plan-table" id="planTable"></table>
+    <button class="btn secondary" id="addPlanRowBtn" style="margin-top:8px;">+ Add row</button>
+
+    <h2 style="margin-top:18px;">Value aliases <span class="small">(optional — for genuine cross-vendor terminology differences, not just formatting)</span></h2>
+    <p class="hint">Case/punctuation differences ("PRE-DOSE" vs "Pre Dose") resolve automatically. A real vocabulary difference ("0H" meaning the same thing as "PRE-DOSE") won't — add an alias here rather than have it silently guessed. Applies to whichever source is being checked, never to the plan itself.</p>
+    <table id="aliasTable"><tr><th>Dimension</th><th>Raw value (in the data)</th><th>Canonical value (matches the plan)</th><th></th></tr></table>
+    <button class="btn secondary" id="addAliasBtn" style="margin-top:8px;">+ Add alias</button>
+
+    <div class="btn-row">
+      <button class="btn secondary" id="backTo4">← Back</button>
+      <button class="btn" id="runExpectedBtn">Run Expected-Sample Check →</button>
+    </div>
+
+    <div id="expectedResults" style="margin-top:20px;"></div>
+  </section>
+</div>
+
+<footer>P21 Reconciliation POC — client-side only, no backend, no data persistence. Built for internal design discussion.</footer>
+
+<script>
+/* =====================  core.js  ===================== */
+// core.js — P21 Reconciliation POC core algorithms (framework-free, runs in browser or node)
+// Shared by index.html (browser) and test.js (node verification).
+
+(function (root) {
+  "use strict";
+
+  // ---------- normalization ----------
+  function normTrimUpper(v) {
+    if (v === undefined || v === null) return "";
+    return String(v).trim().toUpperCase();
+  }
+  function normAlnumUpper(v) {
+    return normTrimUpper(v).replace(/[^A-Z0-9]/g, "");
+  }
+  function normAlnumUpperNoLeadingZeros(v) {
+    const a = normAlnumUpper(v);
+    // strip leading zeros only from a purely-numeric string; leave alphanumeric ids alone
+    if (/^[0-9]+$/.test(a)) return a.replace(/^0+(?=\d)/, "");
+    return a;
+  }
+  const NORM_VARIANTS = [
+    { name: "trim-upper", fn: normTrimUpper },
+    { name: "alnum-upper", fn: normAlnumUpper },
+    { name: "alnum-upper-no-leading-zeros", fn: normAlnumUpperNoLeadingZeros },
+  ];
+
+  // ---------- synonym dictionaries ----------
+  const CATEGORY_SYNONYMS = {
+    BARCODE: ["barcode", "accession", "accessionnumber", "accessionno", "accessionnum", "accessionid",
+      "specimenid", "sampleid", "aliquotid", "tubeid", "kitid", "labelid", "specimenbarcode"],
+    SUBJECT: ["subject", "subjid", "usubjid", "patient", "patid", "patientid", "participant",
+      "participantid", "screeningnumber", "screeningno", "subjectid", "subjectnumber", "subjno"],
+    VISIT: ["visit", "visitnum", "visitname", "event", "visitdate"],
+    SAMPLETYPE: ["sampletype", "specimentype", "spectype", "analyte", "matrix", "specimen", "sampletypedesc"],
+    SEX: ["sex", "gender"],
+    DOB: ["dob", "birthdate", "dateofbirth", "birthdt"],
+    AGE: ["age", "ageyears", "agey"],
+    RACE: ["race", "ethnicity"],
+    SITE: ["site", "siteid", "siteno", "center", "centre", "centerid"],
+    COLLECTDATE: ["collectiondate", "drawdate", "sampledate", "receiveddate", "collectdt", "draweddate"],
+    COHORT: ["cohort", "arm", "armcd", "treatmentarm", "group", "cohortid", "cohortname"],
+    PERIOD: ["period", "periodnum", "cycle", "cycleno"],
+    TIMEPOINT: ["timepoint", "tpt", "time"],
+  };
+
+  function normalizeHeader(h) {
+    return String(h || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function categoryForHeader(header) {
+    const h = normalizeHeader(header);
+    const scores = {};
+    for (const [cat, syns] of Object.entries(CATEGORY_SYNONYMS)) {
+      let best = 0;
+      for (const syn of syns) {
+        const s = normalizeHeader(syn);
+        let score = 0;
+        if (h === s) score = 1.0;
+        else if (h.includes(s) || s.includes(h)) score = 0.7;
+        if (score > best) best = score;
+      }
+      scores[cat] = best;
+    }
+    // SUBJECT is a broad, generic category and a common qualifying prefix
+    // (e.g. "SubjectSex", "SubjectDOB") — down-weight it in the head-to-head
+    // comparison so it doesn't swallow compound names that are really about a
+    // more specific field. The *reported* score is still the undiscounted one.
+    let bestCat = null, bestEffective = 0;
+    for (const [cat, score] of Object.entries(scores)) {
+      const effective = cat === "SUBJECT" ? score * 0.75 : score;
+      if (effective > bestEffective) { bestEffective = effective; bestCat = cat; }
+    }
+    return { category: bestCat, score: bestCat ? scores[bestCat] : 0 };
+  }
+
+  // ---------- column profiling ----------
+  function profileColumn(rows, header) {
+    const raw = rows.map((r) => r[header]);
+    const nonEmpty = raw.filter((v) => v !== undefined && v !== null && String(v).trim() !== "");
+    const upperVals = nonEmpty.map(normTrimUpper);
+    const distinct = new Set(upperVals);
+    const uniquenessRatio = nonEmpty.length ? distinct.size / nonEmpty.length : 0;
+
+    let barcodeLike = 0, dateLike = 0, numericLike = 0;
+    for (const v of upperVals) {
+      if (/^[A-Z0-9][A-Z0-9\-_]{3,19}$/.test(v)) barcodeLike++;
+      if (/^[0-9]+$/.test(v) && v.length <= 12) numericLike++;
+      if (!isNaN(Date.parse(v)) && /[0-9]{2,4}/.test(v) && v.length >= 6) dateLike++;
+    }
+    const n = Math.max(nonEmpty.length, 1);
+    const barcodeRatio = barcodeLike / n;
+    const dateRatio = dateLike / n;
+    const numericRatio = numericLike / n;
+
+    const cat = categoryForHeader(header);
+
+    return {
+      header,
+      nonEmptyCount: nonEmpty.length,
+      distinctCount: distinct.size,
+      uniquenessRatio,
+      looksBarcode: barcodeRatio > 0.8 && uniquenessRatio > 0.8,
+      looksDate: dateRatio > 0.6,
+      looksNumericId: numericRatio > 0.6,
+      category: cat.category,
+      categoryScore: cat.score,
+      sample: nonEmpty.slice(0, 3),
+    };
+  }
+
+  function profileFile(rows, headers) {
+    const profiles = {};
+    for (const h of headers) profiles[h] = profileColumn(rows, h);
+    return profiles;
+  }
+
+  // ---------- value overlap between two columns ----------
+  function computeOverlap(rowsA, colA, rowsB, colB) {
+    let best = { score: 0, variant: null };
+    for (const variant of NORM_VARIANTS) {
+      const setA = new Set(rowsA.map((r) => variant.fn(r[colA])).filter(Boolean));
+      const setB = new Set(rowsB.map((r) => variant.fn(r[colB])).filter(Boolean));
+      if (!setA.size || !setB.size) continue;
+      let intersection = 0;
+      for (const v of setA) if (setB.has(v)) intersection++;
+      const score = intersection / Math.min(setA.size, setB.size);
+      if (score > best.score) best = { score, variant: variant.name, intersection, sizeA: setA.size, sizeB: setB.size };
+    }
+    return best;
+  }
+
+  // ---------- key suggestion ----------
+  function suggestKeys(rowsA, headersA, rowsB, headersB) {
+    const profA = profileFile(rowsA, headersA);
+    const profB = profileFile(rowsB, headersB);
+
+    const pairs = [];
+    for (const colA of headersA) {
+      for (const colB of headersB) {
+        const overlap = computeOverlap(rowsA, colA, rowsB, colB);
+        if (overlap.score <= 0) continue;
+        const pA = profA[colA], pB = profB[colB];
+        const nameSynergy = pA.category && pA.category === pB.category
+          ? Math.min(pA.categoryScore, pB.categoryScore) : 0;
+        const patternBonus = pA.looksBarcode && pB.looksBarcode ? 0.2 : 0;
+        const score = 0.55 * overlap.score + 0.25 * nameSynergy + 0.20 * patternBonus;
+        pairs.push({
+          colA, colB, score,
+          overlap: overlap.score, normVariant: overlap.variant,
+          category: pA.category === pB.category ? pA.category : null,
+          barcodeLike: pA.looksBarcode && pB.looksBarcode,
+        });
+      }
+    }
+    pairs.sort((a, b) => b.score - a.score);
+
+    const primary = pairs[0] || null;
+
+    // fallback: best pair within SUBJECT, VISIT, SAMPLETYPE categories (excluding the primary's columns)
+    function bestOfCategory(cat) {
+      const candidates = pairs.filter((p) => p.category === cat && p !== primary);
+      return candidates[0] || null;
+    }
+    const fallback = {
+      subject: bestOfCategory("SUBJECT"),
+      visit: bestOfCategory("VISIT"),
+      sampleType: bestOfCategory("SAMPLETYPE"),
+    };
+
+    return { profA, profB, rankedPairs: pairs.slice(0, 10), primary, fallback };
+  }
+
+  // ---------- reconciliation ----------
+  function buildIndex(rows, col, normFn) {
+    const idx = new Map();
+    rows.forEach((row, i) => {
+      const key = normFn(row[col]);
+      if (!key) return;
+      if (!idx.has(key)) idx.set(key, []);
+      idx.get(key).push(i);
+    });
+    return idx;
+  }
+
+  function normFnFor(variantName) {
+    return (NORM_VARIANTS.find((v) => v.name === variantName) || NORM_VARIANTS[0]).fn;
+  }
+
+  // ---------- flexible date parsing ----------
+  // Deliberately does NOT lean on the platform's native Date.parse for
+  // cross-format comparison. Two problems with that: (1) Date.parse treats
+  // bare ISO dates ("2026-02-11") as UTC but treats almost every other format
+  // ("11-Feb-2026", "02/11/2026") as *local* time, so the same calendar date
+  // written two different ways can come back an hour or more apart purely from
+  // timezone arithmetic — a false mismatch with zero clinical meaning. (2) for
+  // ambiguous numeric formats (03/04/2026) it silently guesses month-first with
+  // no way to know it guessed. This parser extracts year/month/day directly for
+  // every format it recognizes (so identical dates always net to zero difference
+  // regardless of source format) and flags the result "ambiguous" when the
+  // day/month order had to be assumed, so that can be surfaced rather than hidden.
+  const MONTH_NAMES = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  function fixYear(y) { y = Number(y); return y < 100 ? (y < 50 ? 2000 + y : 1900 + y) : y; }
+
+  function parseCalendarDate(str) {
+    const s = String(str === undefined || str === null ? "" : str).trim();
+    if (!s) return null;
+    let m;
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return { y: +m[1], mo: +m[2], d: +m[3] };
+    if ((m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/))) return { y: +m[1], mo: +m[2], d: +m[3] };
+    if ((m = s.match(/^(\d{1,2})[-\s]([A-Za-z]{3,})[-\s](\d{2,4})$/))) {
+      const mo = MONTH_NAMES[m[2].toLowerCase().slice(0, 3)];
+      if (mo) return { y: fixYear(m[3]), mo, d: +m[1] };
+    }
+    if ((m = s.match(/^([A-Za-z]{3,})[-\s](\d{1,2}),?[-\s](\d{2,4})$/))) {
+      const mo = MONTH_NAMES[m[1].toLowerCase().slice(0, 3)];
+      if (mo) return { y: fixYear(m[3]), mo, d: +m[2] };
+    }
+    if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/))) {
+      const a = +m[1], b = +m[2], y = fixYear(m[3]);
+      if (a > 12 && b <= 12) return { y, mo: b, d: a };   // only valid as D/M/Y
+      if (b > 12 && a <= 12) return { y, mo: a, d: b };   // only valid as M/D/Y
+      return { y, mo: a, d: b, ambiguous: true };          // both <=12: assuming month-first
+    }
+    // last resort: hand off to the platform, but re-extract via UTC getters so
+    // the *result* is at least self-consistent even though the input format
+    // wasn't recognized.
+    const t = Date.parse(s);
+    if (!isNaN(t)) {
+      const dt = new Date(t);
+      return { y: dt.getUTCFullYear(), mo: dt.getUTCMonth() + 1, d: dt.getUTCDate(), fallback: true };
+    }
+    return null;
+  }
+
+  function calendarDateToEpochDay(cd) {
+    return Math.floor(Date.UTC(cd.y, cd.mo - 1, cd.d) / 86400000);
+  }
+
+  function compareField(valA, valB, type, toleranceDays) {
+    const a = valA === undefined || valA === null ? "" : String(valA).trim();
+    const b = valB === undefined || valB === null ? "" : String(valB).trim();
+    if (!a || !b) return { status: "n/a" };
+    if (type === "date") {
+      const pa = parseCalendarDate(a), pb = parseCalendarDate(b);
+      if (!pa || !pb) return { status: a.toUpperCase() === b.toUpperCase() ? "match" : "mismatch" };
+      const diffDays = Math.abs(calendarDateToEpochDay(pa) - calendarDateToEpochDay(pb));
+      return {
+        status: diffDays <= (toleranceDays || 0) ? "match" : "mismatch",
+        diffDays,
+        ambiguous: !!(pa.ambiguous || pb.ambiguous),
+      };
+    }
+    return { status: a.toUpperCase() === b.toUpperCase() ? "match" : "mismatch" };
+  }
+
+  function reconcile(opts) {
+    const { rowsA, rowsB, primaryKey, fallbackKey, demographicMappings = [] } = opts;
+    const normFn = normFnFor(primaryKey.normVariant);
+    const idxA = buildIndex(rowsA, primaryKey.colA, normFn);
+    const idxB = buildIndex(rowsB, primaryKey.colB, normFn);
+
+    const matchedHigh = [];
+    const duplicates = [];
+    const unmatchedAIdx = new Set(rowsA.map((_, i) => i));
+    const unmatchedBIdx = new Set(rowsB.map((_, i) => i));
+
+    for (const [key, aIdxs] of idxA.entries()) {
+      if (aIdxs.length > 1) duplicates.push({ side: "A", key, count: aIdxs.length, rows: aIdxs });
+      const bIdxs = idxB.get(key);
+      if (!bIdxs) continue;
+      if (bIdxs.length > 1) duplicates.push({ side: "B", key, count: bIdxs.length, rows: bIdxs });
+      const ai = aIdxs[0], bi = bIdxs[0];
+      unmatchedAIdx.delete(ai);
+      unmatchedBIdx.delete(bi);
+      const rowA = rowsA[ai], rowB = rowsB[bi];
+      const fieldResults = demographicMappings.map((m) => ({
+        label: m.label,
+        ...compareField(rowA[m.colA], rowB[m.colB], m.type, m.toleranceDays),
+      }));
+      matchedHigh.push({ key, rowA, rowB, confidence: "high", fieldResults });
+    }
+
+    // tiered fallback match on remaining unmatched rows
+    const matchedLow = [];
+    if (fallbackKey && fallbackKey.subject && fallbackKey.visit) {
+      const fbNorm = (row, subjCol, visitCol, stCol) =>
+        [normTrimUpper(row[subjCol]), normTrimUpper(row[visitCol]), stCol ? normTrimUpper(row[stCol]) : ""].join("|");
+
+      const remA = [...unmatchedAIdx];
+      const remB = [...unmatchedBIdx];
+      const fbIdxA = new Map();
+      remA.forEach((i) => {
+        const k = fbNorm(rowsA[i], fallbackKey.subject.colA, fallbackKey.visit.colA, fallbackKey.sampleType && fallbackKey.sampleType.colA);
+        if (!fbIdxA.has(k)) fbIdxA.set(k, []);
+        fbIdxA.get(k).push(i);
+      });
+      remB.forEach((i) => {
+        const k = fbNorm(rowsB[i], fallbackKey.subject.colB, fallbackKey.visit.colB, fallbackKey.sampleType && fallbackKey.sampleType.colB);
+        if (fbIdxA.has(k)) {
+          const aList = fbIdxA.get(k);
+          if (aList.length) {
+            const ai = aList.shift();
+            unmatchedAIdx.delete(ai);
+            unmatchedBIdx.delete(i);
+            const rowA = rowsA[ai], rowB = rowsB[i];
+            const fieldResults = demographicMappings.map((m) => ({
+              label: m.label,
+              ...compareField(rowA[m.colA], rowB[m.colB], m.type, m.toleranceDays),
+            }));
+            matchedLow.push({ key: k, rowA, rowB, confidence: "low", note: "matched via fallback subject/visit key — verify identity", fieldResults });
+          }
+        }
+      });
+    }
+
+    const missingInB = [...unmatchedAIdx].map((i) => ({ row: rowsA[i], source: "A" }));
+    const missingInA = [...unmatchedBIdx].map((i) => ({ row: rowsB[i], source: "B" }));
+
+    const fieldMismatchCount = matchedHigh.concat(matchedLow)
+      .reduce((sum, m) => sum + m.fieldResults.filter((f) => f.status === "mismatch").length, 0);
+
+    return {
+      summary: {
+        matchedHigh: matchedHigh.length,
+        matchedLow: matchedLow.length,
+        missingInB: missingInB.length,
+        missingInA: missingInA.length,
+        duplicateKeys: duplicates.length,
+        fieldMismatches: fieldMismatchCount,
+      },
+      matchedHigh, matchedLow, missingInB, missingInA, duplicates,
+    };
+  }
+
+  // ---------- expected-sample reconciliation ----------
+  // cols: { subjectCol, cohortCol, visitCol, periodCol, timepointCol, sampleTypeCol }
+  //   — cohortCol/periodCol/timepointCol are optional; pass "" or omit to skip that dimension.
+  // plan: [{ cohort, visit, period, timepoint, sampleType, required }]
+  //   — cohort/period/timepoint are optional per row. A blank value in a plan row for any
+  //     of these means "applies regardless" (wildcard), so a flat plan with none of them set
+  //     behaves exactly like the original single-schedule check. A plan row with a cohort set
+  //     only applies to subjects whose resolved cohort matches it; a plan row with period/
+  //     timepoint set only matches actual records that also carry that period/timepoint.
+  // aliases: [{ dimension, raw, canonical }] — optional per-dimension value crosswalk applied
+  //     to the *actual data* (never the plan) before comparison. Needed because visit/timepoint/
+  //     cohort naming is realistically inconsistent across vendors/EDC — see README. Comparison
+  //     itself uses alphanumeric-normalized matching (case/punctuation-insensitive) on top of
+  //     any alias substitution, so cosmetic differences ("PRE-DOSE" vs "Pre Dose") resolve on
+  //     their own, while genuine vocabulary differences ("2H POST" vs "2hr Post-Dose") need an
+  //     explicit alias to resolve — the tool deliberately does not guess at those.
+  function expectedSampleCheck(rows, cols, plan, aliases) {
+    const norm = normAlnumUpper;
+    function resolve(dimension, rawValue) {
+      const v = rawValue === undefined || rawValue === null ? "" : String(rawValue).trim();
+      if (!v || !aliases || !aliases.length) return v;
+      const hit = aliases.find((al) => al.dimension === dimension && norm(al.raw) === norm(v));
+      return hit ? hit.canonical : v;
+    }
+
+    const bySubject = new Map();
+    rows.forEach((r) => {
+      const subj = r[cols.subjectCol];
+      if (subj === undefined || subj === null || String(subj).trim() === "") return;
+      const key = String(subj).trim();
+      if (!bySubject.has(key)) bySubject.set(key, { cohort: "", records: [] });
+      const entry = bySubject.get(key);
+      const cohortVal = cols.cohortCol ? resolve("cohort", r[cols.cohortCol]) : "";
+      if (cohortVal && !entry.cohort) entry.cohort = cohortVal;
+      entry.records.push({
+        visit: resolve("visit", cols.visitCol ? r[cols.visitCol] : ""),
+        period: cols.periodCol ? resolve("period", r[cols.periodCol]) : "",
+        timepoint: cols.timepointCol ? resolve("timepoint", r[cols.timepointCol]) : "",
+        sampleType: resolve("sampleType", cols.sampleTypeCol ? r[cols.sampleTypeCol] : ""),
+      });
+    });
+
+    function dimMatch(planVal, actualVal) {
+      if (planVal === undefined || planVal === null || String(planVal).trim() === "") return true; // wildcard
+      return norm(planVal) === norm(actualVal || "");
+    }
+    function planAppliesToCohort(p, cohort) {
+      if (!p.cohort || String(p.cohort).trim() === "") return true; // applies to all cohorts
+      if (!cohort) return false; // plan row is cohort-specific; subject's cohort is unknown — can't confirm, so skip rather than falsely flag
+      return norm(p.cohort) === norm(cohort);
+    }
+    function recordSatisfies(rec, p) {
+      return dimMatch(p.visit, rec.visit) && dimMatch(p.period, rec.period) &&
+        dimMatch(p.timepoint, rec.timepoint) && dimMatch(p.sampleType, rec.sampleType);
+    }
+
+    const subjects = [...bySubject.keys()];
+    const findings = [];
+    for (const subj of subjects) {
+      const { cohort, records } = bySubject.get(subj);
+      const applicable = plan.filter((p) => planAppliesToCohort(p, cohort));
+
+      applicable.forEach((p) => {
+        const required = (p.required || "Y").toUpperCase();
+        if (required === "N") return;
+        const found = records.some((rec) => recordSatisfies(rec, p));
+        if (!found) {
+          findings.push({
+            subject: subj, cohort: cohort || "", visit: p.visit || "(any)",
+            period: p.period || "", timepoint: p.timepoint || "", sampleType: p.sampleType || "(any)",
+            severity: required === "Y" ? "ERROR" : required === "W" ? "WARNING" : "INFO",
+            issue: "Expected sample not found",
+          });
+        }
+      });
+
+      const flagged = new Set();
+      records.forEach((rec) => {
+        const combo = [rec.visit, rec.period, rec.timepoint, rec.sampleType].map(norm).join("|");
+        if (flagged.has(combo)) return;
+        const covered = applicable.some((p) => recordSatisfies(rec, p));
+        if (!covered) {
+          flagged.add(combo);
+          findings.push({
+            subject: subj, cohort: cohort || "", visit: rec.visit || "", period: rec.period || "",
+            timepoint: rec.timepoint || "", sampleType: rec.sampleType || "",
+            severity: "INFO", issue: "Unexpected — not in sample plan",
+          });
+        }
+      });
+    }
+
+    const rollup = new Map();
+    for (const f of findings) {
+      if (f.issue !== "Expected sample not found") continue;
+      const k = [f.cohort, f.visit, f.period, f.timepoint, f.sampleType].join("|");
+      rollup.set(k, (rollup.get(k) || 0) + 1);
+    }
+
+    return {
+      subjectCount: subjects.length,
+      findings,
+      rollup: [...rollup.entries()].map(([k, count]) => {
+        const [cohort, visit, period, timepoint, sampleType] = k.split("|");
+        return { cohort, visit, period, timepoint, sampleType, subjectsMissing: count };
+      }),
+    };
+  }
+
+  const P21Recon = {
+    normTrimUpper, normAlnumUpper, normAlnumUpperNoLeadingZeros,
+    categoryForHeader, profileColumn, profileFile, computeOverlap,
+    suggestKeys, reconcile, expectedSampleCheck, compareField,
+    parseCalendarDate, calendarDateToEpochDay,
+  };
+
+  if (typeof module !== "undefined" && module.exports) module.exports = P21Recon;
+  else root.P21Recon = P21Recon;
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* =====================  demo.js  ===================== */
+// demo.js — synthetic demo data for the P21 Reconciliation POC.
+//
+// Mirrors two real-world scenarios discussed:
+// 1. A sample manifest (site-entered) vs vendor lab data, where subject-ID
+//    nomenclature differs completely between sources but the lab-issued
+//    accession/barcode number is the one value that travels unchanged.
+// 2. A study with two cohorts on different PK sampling schedules, where one
+//    visit (WEEK 4) draws two specimens distinguished only by a timepoint
+//    qualifier (pre-dose vs 2h post-dose) — exercising the cohort-scoped,
+//    multi-qualifier expected-sample plan.
+//
+// Deliberate gaps/exceptions are injected to exercise every finding type.
+
+(function (root) {
+  "use strict";
+
+  function pad3(n) { return String(n).padStart(3, "0"); }
+
+  // Cohort A (subjects 1-15): full PK schedule — trough + peak at WEEK 4 and WEEK 8,
+  // with WEEK 4's two draws distinguished by a timepoint qualifier.
+  // Cohort B (subjects 16-20): reduced/extension cohort — trough only, no peak, ever.
+  const COHORT_A_EVENTS = [
+    { visit: "SCREENING", sampleType: "PD Biomarker", timepoint: "" },
+    { visit: "WEEK 4", sampleType: "PK Trough", timepoint: "PRE-DOSE" },
+    { visit: "WEEK 4", sampleType: "PK Peak", timepoint: "2H POST" },
+    { visit: "WEEK 8", sampleType: "PK Trough", timepoint: "" },
+    { visit: "WEEK 8", sampleType: "PK Peak", timepoint: "" },
+  ];
+  const COHORT_B_EVENTS = [
+    { visit: "SCREENING", sampleType: "PD Biomarker", timepoint: "" },
+    { visit: "WEEK 4", sampleType: "PK Trough", timepoint: "PRE-DOSE" },
+    { visit: "WEEK 8", sampleType: "PK Trough", timepoint: "" },
+  ];
+
+  const visitLabelMap = { SCREENING: "Screening", "WEEK 4": "Wk4", "WEEK 8": "Wk8" };
+  const sampleTypeMap = { "PD Biomarker": "PD-Biomarker", "PK Trough": "PK-Trough", "PK Peak": "PK-Peak" };
+
+  // Authored once, in the manifest's own canonical vocabulary. Cohort-blank rows
+  // apply to every cohort; the two PK Peak rows are Cohort A-only since Cohort B
+  // never draws a peak sample at all. This is the "safe to persist as a reference
+  // table" artifact — a protocol template, no subject data.
+  const samplePlan = [
+    { cohort: "", visit: "SCREENING", sampleType: "PD Biomarker", required: "Y" },
+    { cohort: "", visit: "WEEK 4", sampleType: "PK Trough", timepoint: "PRE-DOSE", required: "Y" },
+    { cohort: "Cohort A", visit: "WEEK 4", sampleType: "PK Peak", timepoint: "2H POST", required: "Y" },
+    { cohort: "", visit: "WEEK 8", sampleType: "PK Trough", required: "Y" },
+    { cohort: "Cohort A", visit: "WEEK 8", sampleType: "PK Peak", required: "Y" },
+  ];
+
+  function buildDemoData() {
+    const manifestHeaders = ["SiteSubjNo", "Cohort", "VisitLabel", "SpecimenType", "Timepoint", "AccessionNo", "CollectionDate", "SubjectSex", "SubjectDOB"];
+    const labHeaders = ["LabPatientID", "VisitName", "Analyte", "AccessionNumber", "ReceivedDate", "Sex", "DOB"];
+
+    const manifestRows = [];
+    const labRows = [];
+    let accessionSeq = 100000;
+    const nextAccession = () => "PK" + String(accessionSeq++).padStart(6, "0");
+
+    function demographicsFor(n) {
+      const baseSex = n % 2 === 0 ? "F" : "M";
+      const baseDOB = `19${60 + (n % 30)}-0${1 + (n % 9)}-1${n % 9}`;
+      let manifestSex = baseSex, labSex = baseSex;
+      let manifestDOB = baseDOB, labDOB = baseDOB;
+      if (n === 14) { manifestSex = "F"; labSex = "M"; } // transcription error
+      if (n === 5) { manifestDOB = "1975-04-12"; labDOB = "1957-04-12"; } // digit transposition
+      return { manifestSex, labSex, manifestDOB, labDOB };
+    }
+
+    for (let n = 1; n <= 20; n++) {
+      const subjA = `07-${pad3(n)}`; // site-formatted, e.g. "07-007"
+      const subjB = pad3(n);          // lab-formatted, no site prefix, e.g. "007" — NOT string-equal to subjA
+      const cohort = n <= 15 ? "Cohort A" : "Cohort B";
+      const events = n <= 15 ? COHORT_A_EVENTS : COHORT_B_EVENTS;
+      const dem = demographicsFor(n);
+
+      for (const ev of events) {
+        // Subject 3: entire WEEK 8 / PK Trough sample never happened (gap in both sources)
+        if (n === 3 && ev.visit === "WEEK 8" && ev.sampleType === "PK Trough") continue;
+        // Subject 15: dropout after WEEK 4 — no WEEK 8 samples at all
+        if (n === 15 && ev.visit === "WEEK 8") continue;
+
+        const manifestVisit = ev.visit;
+        const manifestType = ev.sampleType;
+        const labVisit = visitLabelMap[ev.visit];
+        const labType = sampleTypeMap[ev.sampleType];
+        const collectionDate = `2026-0${1 + (n % 6)}-1${n % 8}`;
+
+        // Subject 7, WEEK 4 / PK Peak: manifest accession left blank (data-entry gap).
+        // The lab still received *a* sample and logged its own accession number,
+        // but with no shared key the two records can never be linked automatically.
+        // (Only Cohort A subjects reach this branch, since only Cohort A has a Peak event.)
+        if (n === 7 && ev.visit === "WEEK 4" && ev.sampleType === "PK Peak") {
+          manifestRows.push({
+            SiteSubjNo: subjA, Cohort: cohort, VisitLabel: manifestVisit, SpecimenType: manifestType, Timepoint: ev.timepoint,
+            AccessionNo: "", CollectionDate: collectionDate,
+            SubjectSex: dem.manifestSex, SubjectDOB: dem.manifestDOB,
+          });
+          labRows.push({
+            LabPatientID: subjB, VisitName: labVisit, Analyte: labType,
+            AccessionNumber: nextAccession(), ReceivedDate: collectionDate,
+            Sex: dem.labSex, DOB: dem.labDOB,
+          });
+          continue;
+        }
+
+        // Subject 12: same accession number accidentally reused for two different
+        // draws (WEEK 4 and WEEK 8 PK Trough) — classic relabeling error.
+        if (n === 12 && ev.sampleType === "PK Trough" && (ev.visit === "WEEK 4" || ev.visit === "WEEK 8")) {
+          const sharedAcc = "PK012000";
+          manifestRows.push({
+            SiteSubjNo: subjA, Cohort: cohort, VisitLabel: manifestVisit, SpecimenType: manifestType, Timepoint: ev.timepoint,
+            AccessionNo: sharedAcc, CollectionDate: collectionDate,
+            SubjectSex: dem.manifestSex, SubjectDOB: dem.manifestDOB,
+          });
+          labRows.push({
+            LabPatientID: subjB, VisitName: labVisit, Analyte: labType,
+            AccessionNumber: sharedAcc, ReceivedDate: collectionDate,
+            Sex: dem.labSex, DOB: dem.labDOB,
+          });
+          continue;
+        }
+
+        // Normal case: shared accession number, formatted with a dash on the lab
+        // side to prove normalization handles cosmetic formatting differences.
+        const acc = nextAccession();
+        const accLabFormatted = acc.slice(0, 2) + "-" + acc.slice(2); // "PK-000101"
+        manifestRows.push({
+          SiteSubjNo: subjA, Cohort: cohort, VisitLabel: manifestVisit, SpecimenType: manifestType, Timepoint: ev.timepoint,
+          AccessionNo: acc, CollectionDate: collectionDate,
+          SubjectSex: dem.manifestSex, SubjectDOB: dem.manifestDOB,
+        });
+        labRows.push({
+          LabPatientID: subjB, VisitName: labVisit, Analyte: labType,
+          AccessionNumber: accLabFormatted, ReceivedDate: collectionDate,
+          Sex: dem.labSex, DOB: dem.labDOB,
+        });
+      }
+    }
+
+    return { manifestHeaders, manifestRows, labHeaders, labRows, samplePlan };
+  }
+
+  const P21ReconDemo = { buildDemoData };
+  if (typeof module !== "undefined" && module.exports) module.exports = P21ReconDemo;
+  else root.P21ReconDemo = P21ReconDemo;
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* =====================  app.js (UI wiring)  ===================== */
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const esc = (v) => String(v === undefined || v === null ? "" : v).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const STEP_LABELS = ["1. Load Data", "2. Confirm Keys", "3. Field Mapping", "4. Results", "5. Expected Sample"];
+
+  const state = {
+    fileA: null, fileB: null,
+    suggestion: null,
+    primaryKey: null,
+    fallbackKey: null,
+    fieldRows: [],
+    reconResult: null,
+    samplePlan: [],
+    valueAliases: [],
+    planImport: null,
+  };
+
+  function renderStepper(active) {
+    $("stepper").innerHTML = STEP_LABELS.map((label, i) => {
+      const n = i + 1;
+      const cls = n === active ? "active" : n < active ? "done" : "";
+      return `<div class="step-pill ${cls}">${esc(label)}</div>`;
+    }).join("");
+  }
+
+  function goToStep(n) {
+    for (let i = 1; i <= 5; i++) $("step" + i).style.display = i === n ? "block" : "none";
+    renderStepper(n);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ---------- Step 1: load data ----------
+  // CSV files are parsed by hand (no type coercion at all) rather than via SheetJS,
+  // because SheetJS's default CSV-to-sheet inference silently turns date-looking
+  // text (DOB, collection dates) into raw Excel serial numbers (e.g. "1967-08-17"
+  // -> 24701.04) unless every read/parse option is tuned just right. For .xlsx/.xls
+  // files — where dates are genuinely stored as numeric cells — SheetJS is used with
+  // cellDates + a fixed date format so the same class of value comes back readable.
+  function parseCsvText(text) {
+    const rows = [];
+    let row = [], field = "", inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; } }
+        else field += c;
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ",") { row.push(field); field = ""; }
+        else if (c === "\r") { /* skip */ }
+        else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+        else field += c;
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows.filter((r) => !(r.length === 1 && r[0].trim() === ""));
+  }
+
+  function parseFile(file) {
+    const isCsv = /\.csv$/i.test(file.name);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          if (isCsv) {
+            const table = parseCsvText(e.target.result);
+            if (!table.length) { resolve({ headers: [], rows: [] }); return; }
+            const headers = table[0].map((h) => h.trim());
+            const rows = table.slice(1).map((r) => {
+              const obj = {};
+              headers.forEach((h, i) => { obj[h] = r[i] !== undefined ? r[i] : ""; });
+              return obj;
+            });
+            resolve({ headers, rows });
+          } else {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: "array", cellDates: true });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            let rows = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false, dateNF: "yyyy-mm-dd" });
+            let headers = rows.length ? Object.keys(rows[0]) : [];
+            if (!headers.length) {
+              const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
+              headers = raw[0] || [];
+            }
+            resolve({ headers, rows });
+          }
+        } catch (err) { reject(err); }
+      };
+      reader.onerror = () => reject(new Error("Could not read file"));
+      if (isCsv) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function checkStep1Ready() {
+    $("toStep2Btn").disabled = !(state.fileA && state.fileB);
+  }
+
+  $("fileA").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    parseFile(f).then((parsed) => {
+      state.fileA = { label: $("labelA").value || "Source A", headers: parsed.headers, rows: parsed.rows };
+      $("statusA").textContent = `Loaded ${parsed.rows.length} rows, ${parsed.headers.length} columns.`;
+      checkStep1Ready();
+    }).catch((err) => { $("statusA").textContent = "Error: " + err.message; $("statusA").style.color = "#c0392b"; });
+  });
+  $("fileB").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    parseFile(f).then((parsed) => {
+      state.fileB = { label: $("labelB").value || "Source B", headers: parsed.headers, rows: parsed.rows };
+      $("statusB").textContent = `Loaded ${parsed.rows.length} rows, ${parsed.headers.length} columns.`;
+      checkStep1Ready();
+    }).catch((err) => { $("statusB").textContent = "Error: " + err.message; $("statusB").style.color = "#c0392b"; });
+  });
+
+  $("loadDemoBtn").addEventListener("click", () => {
+    const demo = P21ReconDemo.buildDemoData();
+    $("labelA").value = "Sample Manifest (site-entered)";
+    $("labelB").value = "Lab / Vendor Data";
+    state.fileA = { label: $("labelA").value, headers: demo.manifestHeaders, rows: demo.manifestRows };
+    state.fileB = { label: $("labelB").value, headers: demo.labHeaders, rows: demo.labRows };
+    state.samplePlan = demo.samplePlan.map((p) => ({ ...p }));
+    state.valueAliases = [];
+    $("statusA").textContent = `Loaded ${demo.manifestRows.length} rows, ${demo.manifestHeaders.length} columns (demo data).`;
+    $("statusB").textContent = `Loaded ${demo.labRows.length} rows, ${demo.labHeaders.length} columns (demo data).`;
+    checkStep1Ready();
+  });
+
+  $("toStep2Btn").addEventListener("click", () => { populateStep2(); goToStep(2); });
+  $("backTo1").addEventListener("click", () => goToStep(1));
+
+  // ---------- Step 2: keys ----------
+  function fillSelect(sel, headers, selected) {
+    sel.innerHTML = '<option value="">— none —</option>' + headers.map((h) =>
+      `<option value="${esc(h)}" ${h === selected ? "selected" : ""}>${esc(h)}</option>`).join("");
+  }
+
+  function populateStep2() {
+    const s = P21Recon.suggestKeys(state.fileA.rows, state.fileA.headers, state.fileB.rows, state.fileB.headers);
+    state.suggestion = s;
+
+    $("rankedPairsTable").innerHTML = `<table><tr><th>Source A column</th><th>Source B column</th><th>Score</th><th>Value overlap</th><th>Match method</th><th>Category</th></tr>` +
+      s.rankedPairs.map((p) => `<tr>
+        <td>${esc(p.colA)}</td><td>${esc(p.colB)}</td>
+        <td><span class="score-bar-wrap"><span class="score-bar" style="width:${Math.round(p.score * 100)}%"></span></span>${p.score.toFixed(2)}</td>
+        <td>${Math.round(p.overlap * 100)}%</td>
+        <td>${esc(p.normVariant || "")}</td>
+        <td>${esc(p.category || "—")}${p.barcodeLike ? " (barcode-like)" : ""}</td>
+      </tr>`).join("") + `</table>`;
+
+    fillSelect($("primaryA"), state.fileA.headers, s.primary ? s.primary.colA : "");
+    fillSelect($("primaryB"), state.fileB.headers, s.primary ? s.primary.colB : "");
+    updatePrimaryNote();
+    $("primaryA").onchange = updatePrimaryNote;
+    $("primaryB").onchange = updatePrimaryNote;
+
+    fillSelect($("fbSubjA"), state.fileA.headers, s.fallback.subject ? s.fallback.subject.colA : "");
+    fillSelect($("fbSubjB"), state.fileB.headers, s.fallback.subject ? s.fallback.subject.colB : "");
+    fillSelect($("fbVisitA"), state.fileA.headers, s.fallback.visit ? s.fallback.visit.colA : "");
+    fillSelect($("fbVisitB"), state.fileB.headers, s.fallback.visit ? s.fallback.visit.colB : "");
+    fillSelect($("fbTypeA"), state.fileA.headers, s.fallback.sampleType ? s.fallback.sampleType.colA : "");
+    fillSelect($("fbTypeB"), state.fileB.headers, s.fallback.sampleType ? s.fallback.sampleType.colB : "");
+  }
+
+  function updatePrimaryNote() {
+    const colA = $("primaryA").value, colB = $("primaryB").value;
+    if (!colA || !colB) { $("primaryScoreNote").textContent = ""; return; }
+    const overlap = P21Recon.computeOverlap(state.fileA.rows, colA, state.fileB.rows, colB);
+    $("primaryScoreNote").textContent = overlap.score > 0
+      ? `${Math.round(overlap.score * 100)}% value overlap (${overlap.variant})`
+      : "No value overlap detected between these columns — reconsider this choice.";
+    state.primaryKey = { colA, colB, normVariant: overlap.variant || "trim-upper" };
+  }
+
+  $("toStep3Btn").addEventListener("click", () => {
+    state.fallbackKey = {
+      subject: $("fbSubjA").value && $("fbSubjB").value ? { colA: $("fbSubjA").value, colB: $("fbSubjB").value } : null,
+      visit: $("fbVisitA").value && $("fbVisitB").value ? { colA: $("fbVisitA").value, colB: $("fbVisitB").value } : null,
+      sampleType: $("fbTypeA").value && $("fbTypeB").value ? { colA: $("fbTypeA").value, colB: $("fbTypeB").value } : null,
+    };
+    populateStep3();
+    goToStep(3);
+  });
+  $("backTo2").addEventListener("click", () => goToStep(2));
+
+  // ---------- Step 3: field mapping ----------
+  function autoSuggestFields() {
+    const cats = ["SEX", "DOB", "AGE", "RACE", "SITE", "COLLECTDATE"];
+    const rows = [];
+    for (const cat of cats) {
+      const colA = state.fileA.headers.find((h) => P21Recon.categoryForHeader(h).category === cat && P21Recon.categoryForHeader(h).score >= 0.6);
+      const colB = state.fileB.headers.find((h) => P21Recon.categoryForHeader(h).category === cat && P21Recon.categoryForHeader(h).score >= 0.6);
+      if (colA && colB) {
+        rows.push({
+          include: true,
+          label: cat === "COLLECTDATE" ? "Collection Date" : cat.charAt(0) + cat.slice(1).toLowerCase(),
+          colA, colB,
+          type: (cat === "DOB" || cat === "COLLECTDATE") ? "date" : "exact",
+          toleranceDays: cat === "COLLECTDATE" ? 3 : 0,
+        });
+      }
+    }
+    return rows;
+  }
+
+  function renderFieldRows() {
+    const allHeadersA = state.fileA.headers, allHeadersB = state.fileB.headers;
+    $("fieldRows").innerHTML = state.fieldRows.map((r, i) => `
+      <div class="field-row" data-idx="${i}">
+        <input type="checkbox" data-field="include" ${r.include ? "checked" : ""}>
+        <input type="text" data-field="label" value="${esc(r.label)}">
+        <select data-field="colA">${allHeadersA.map((h) => `<option value="${esc(h)}" ${h === r.colA ? "selected" : ""}>${esc(h)}</option>`).join("")}</select>
+        <select data-field="colB">${allHeadersB.map((h) => `<option value="${esc(h)}" ${h === r.colB ? "selected" : ""}>${esc(h)}</option>`).join("")}</select>
+        <select data-field="type"><option value="exact" ${r.type === "exact" ? "selected" : ""}>exact</option><option value="date" ${r.type === "date" ? "selected" : ""}>date</option></select>
+        <input type="number" min="0" data-field="toleranceDays" value="${r.toleranceDays || 0}" ${r.type === "date" ? "" : "disabled"}>
+      </div>`).join("");
+  }
+
+  $("fieldRows").addEventListener("input", (e) => {
+    const rowEl = e.target.closest(".field-row");
+    if (!rowEl) return;
+    const idx = Number(rowEl.dataset.idx);
+    const field = e.target.dataset.field;
+    if (!field) return;
+    const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    state.fieldRows[idx][field] = field === "toleranceDays" ? Number(val) : val;
+    if (field === "type") renderFieldRows();
+  });
+  $("fieldRows").addEventListener("change", (e) => {
+    const rowEl = e.target.closest(".field-row");
+    if (!rowEl) return;
+    const idx = Number(rowEl.dataset.idx);
+    const field = e.target.dataset.field;
+    if (!field) return;
+    const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    state.fieldRows[idx][field] = field === "toleranceDays" ? Number(val) : val;
+    if (field === "type") renderFieldRows();
+  });
+
+  function populateStep3() {
+    state.fieldRows = autoSuggestFields();
+    renderFieldRows();
+  }
+
+  $("addFieldBtn").addEventListener("click", () => {
+    state.fieldRows.push({ include: true, label: "New Field", colA: state.fileA.headers[0], colB: state.fileB.headers[0], type: "exact", toleranceDays: 0 });
+    renderFieldRows();
+  });
+
+  $("backTo2").addEventListener("click", () => goToStep(2));
+  $("runReconBtn").addEventListener("click", () => {
+    const mappings = state.fieldRows.filter((r) => r.include).map((r) => ({ label: r.label, colA: r.colA, colB: r.colB, type: r.type, toleranceDays: r.toleranceDays }));
+    const result = P21Recon.reconcile({
+      rowsA: state.fileA.rows, rowsB: state.fileB.rows,
+      primaryKey: state.primaryKey, fallbackKey: state.fallbackKey,
+      demographicMappings: mappings,
+    });
+    state.reconResult = result;
+    state.activeMappings = mappings;
+    renderStep4();
+    goToStep(4);
+  });
+
+  // ---------- Step 4: results ----------
+  function renderStep4() {
+    const r = state.reconResult;
+    const cells = [
+      ["Matched (high confidence)", r.summary.matchedHigh],
+      ["Matched (fallback key)", r.summary.matchedLow],
+      ["Missing in " + state.fileB.label, r.summary.missingInB],
+      ["Missing in " + state.fileA.label, r.summary.missingInA],
+      ["Duplicate keys", r.summary.duplicateKeys],
+      ["Field mismatches", r.summary.fieldMismatches],
+    ];
+    $("summaryGrid").innerHTML = cells.map(([lbl, num]) => `<div class="summary-cell"><div class="num">${num}</div><div class="lbl">${esc(lbl)}</div></div>`).join("");
+
+    const mappings = state.activeMappings || [];
+    const matchRows = r.matchedHigh.concat(r.matchedLow);
+    $("panel-matched").innerHTML = `<table><tr><th>Confidence</th><th>Key</th>${mappings.map((m) => `<th>${esc(m.label)}</th>`).join("")}<th>Note</th></tr>` +
+      matchRows.map((m) => `<tr>
+        <td><span class="badge ${m.confidence === "high" ? "high" : "low"}">${m.confidence}</span></td>
+        <td>${esc(m.key)}</td>
+        ${mappings.map((map, i) => {
+          const f = m.fieldResults[i];
+          const cls = f.status === "mismatch" ? "mismatch-cell" : "";
+          const valA = m.rowA[map.colA], valB = m.rowB[map.colB];
+          const ambiguousNote = f.ambiguous ? ` <span class="note" title="Day/month order was ambiguous in at least one value and had to be assumed (month-first) — verify manually.">(day/month assumed ⚠)</span>` : "";
+          return `<td class="${cls}">${esc(valA)} / ${esc(valB)}${f.status === "mismatch" ? " ⚠" : ""}${ambiguousNote}</td>`;
+        }).join("")}
+        <td class="small">${esc(m.note || "")}</td>
+      </tr>`).join("") + `</table>`;
+
+    function renderMissing(list, keyCol, side) {
+      const headers = side === "A" ? state.fileA.headers : state.fileB.headers;
+      return `<table><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}<th>Reason</th></tr>` +
+        list.map((item) => {
+          const row = item.row;
+          const keyVal = row[keyCol];
+          const reason = (!keyVal || String(keyVal).trim() === "") ? "Primary key blank — cannot auto-match" : "No corresponding record found in other source";
+          return `<tr>${headers.map((h) => `<td>${esc(row[h])}</td>`).join("")}<td class="small">${reason}</td></tr>`;
+        }).join("") + `</table>`;
+    }
+    $("panel-missingB").innerHTML = renderMissing(r.missingInB, state.primaryKey.colA, "A");
+    $("panel-missingA").innerHTML = renderMissing(r.missingInA, state.primaryKey.colB, "B");
+
+    $("panel-dupes").innerHTML = `<table><tr><th>Side</th><th>Key value</th><th>Occurrences</th></tr>` +
+      r.duplicates.map((d) => `<tr><td>${d.side === "A" ? esc(state.fileA.label) : esc(state.fileB.label)}</td><td>${esc(d.key)}</td><td>${d.count}</td></tr>`).join("") + `</table>`;
+  }
+
+  document.getElementById("resultTabs").addEventListener("click", (e) => {
+    const tab = e.target.closest(".tab");
+    if (!tab) return;
+    document.querySelectorAll("#resultTabs .tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".tabpanel").forEach((p) => p.classList.remove("active"));
+    tab.classList.add("active");
+    $("panel-" + tab.dataset.tab).classList.add("active");
+  });
+
+  $("exportReconBtn").addEventListener("click", () => {
+    const r = state.reconResult;
+    const mappings = state.activeMappings || [];
+    const csvEscape = (v) => { const s = String(v === undefined || v === null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [];
+    lines.push("SUMMARY"); lines.push("Metric,Count");
+    Object.entries(r.summary).forEach(([k, v]) => lines.push(`${k},${v}`));
+    lines.push(""); lines.push("MATCHED");
+    lines.push(["confidence", "key", ...mappings.map((m) => m.label)].map(csvEscape).join(","));
+    r.matchedHigh.concat(r.matchedLow).forEach((m) => {
+      lines.push([m.confidence, m.key, ...mappings.map((map, i) => `${m.rowA[map.colA]} / ${m.rowB[map.colB]} (${m.fieldResults[i].status})`)].map(csvEscape).join(","));
+    });
+    lines.push(""); lines.push(`MISSING IN ${state.fileB.label}`);
+    lines.push(state.fileA.headers.map(csvEscape).join(","));
+    r.missingInB.forEach((item) => lines.push(state.fileA.headers.map((h) => csvEscape(item.row[h])).join(",")));
+    lines.push(""); lines.push(`MISSING IN ${state.fileA.label}`);
+    lines.push(state.fileB.headers.map(csvEscape).join(","));
+    r.missingInA.forEach((item) => lines.push(state.fileB.headers.map((h) => csvEscape(item.row[h])).join(",")));
+    lines.push(""); lines.push("DUPLICATE KEYS");
+    lines.push("side,key,count");
+    r.duplicates.forEach((d) => lines.push([d.side, d.key, d.count].map(csvEscape).join(",")));
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "p21_reconciliation_findings.csv";
+    a.click();
+  });
+
+  $("toStep5Btn").addEventListener("click", () => { populateStep5(); goToStep(5); });
+  $("backTo4").addEventListener("click", () => goToStep(4));
+
+  // ---------- Step 5: expected sample ----------
+  function populateExpectedCols() {
+    const src = $("expSource").value === "A" ? state.fileA : state.fileB;
+    const guessRequired = (cat) => src.headers.find((h) => P21Recon.categoryForHeader(h).category === cat) || src.headers[0];
+    const guessOptional = (cat) => src.headers.find((h) => P21Recon.categoryForHeader(h).category === cat) || "";
+    fillSelect($("expSubjCol"), src.headers, guessRequired("SUBJECT"));
+    fillSelect($("expVisitCol"), src.headers, guessRequired("VISIT"));
+    fillSelect($("expTypeCol"), src.headers, guessRequired("SAMPLETYPE"));
+    fillSelect($("expCohortCol"), src.headers, guessOptional("COHORT"));
+    fillSelect($("expPeriodCol"), src.headers, guessOptional("PERIOD"));
+    fillSelect($("expTimepointCol"), src.headers, guessOptional("TIMEPOINT"));
+  }
+  $("expSource").addEventListener("change", populateExpectedCols);
+
+  function renderPlanTable() {
+    $("planTable").innerHTML = `<tr><th>Cohort/Arm</th><th>Visit</th><th>Period</th><th>Timepoint</th><th>Sample Type</th><th>Required (Y/W/O/N)</th><th></th></tr>` +
+      state.samplePlan.map((p, i) => `<tr data-idx="${i}">
+        <td><input data-field="cohort" value="${esc(p.cohort)}" placeholder="(any)"></td>
+        <td><input data-field="visit" value="${esc(p.visit)}"></td>
+        <td><input data-field="period" value="${esc(p.period)}" placeholder="(any)"></td>
+        <td><input data-field="timepoint" value="${esc(p.timepoint)}" placeholder="(any)"></td>
+        <td><input data-field="sampleType" value="${esc(p.sampleType)}"></td>
+        <td><input data-field="required" value="${esc(p.required)}" style="width:60px"></td>
+        <td><button class="btn secondary removePlanRow" style="padding:3px 8px;">✕</button></td>
+      </tr>`).join("");
+  }
+  $("planTable").addEventListener("input", (e) => {
+    const tr = e.target.closest("tr[data-idx]");
+    if (!tr) return;
+    const idx = Number(tr.dataset.idx);
+    const field = e.target.dataset.field;
+    if (field) state.samplePlan[idx][field] = e.target.value;
+  });
+  $("planTable").addEventListener("click", (e) => {
+    if (!e.target.classList.contains("removePlanRow")) return;
+    const tr = e.target.closest("tr[data-idx]");
+    state.samplePlan.splice(Number(tr.dataset.idx), 1);
+    renderPlanTable();
+  });
+  $("addPlanRowBtn").addEventListener("click", () => {
+    state.samplePlan.push({ cohort: "", visit: "", period: "", timepoint: "", sampleType: "", required: "Y" });
+    renderPlanTable();
+  });
+
+  // ---- plan import (any CSV/XLSX, columns mapped by the user) ----
+  $("planFile").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    parseFile(f).then((parsed) => {
+      state.planImport = parsed;
+      $("planFileStatus").textContent = `Loaded ${parsed.rows.length} rows, ${parsed.headers.length} columns — map the columns below.`;
+      const guess = (cat) => parsed.headers.find((h) => P21Recon.categoryForHeader(h).category === cat) || "";
+      fillSelect($("planMapCohort"), parsed.headers, guess("COHORT"));
+      fillSelect($("planMapVisit"), parsed.headers, guess("VISIT"));
+      fillSelect($("planMapPeriod"), parsed.headers, guess("PERIOD"));
+      fillSelect($("planMapTimepoint"), parsed.headers, guess("TIMEPOINT"));
+      fillSelect($("planMapType"), parsed.headers, guess("SAMPLETYPE"));
+      fillSelect($("planMapRequired"), parsed.headers, parsed.headers.find((h) => /required/i.test(h)) || "");
+      $("planMappingBox").style.display = "block";
+    }).catch((err) => { $("planFileStatus").textContent = "Error: " + err.message; });
+  });
+  $("applyPlanMappingBtn").addEventListener("click", () => {
+    const map = {
+      cohort: $("planMapCohort").value, visit: $("planMapVisit").value,
+      period: $("planMapPeriod").value, timepoint: $("planMapTimepoint").value,
+      sampleType: $("planMapType").value, required: $("planMapRequired").value,
+    };
+    if (!map.visit || !map.sampleType) { alert("Visit and Sample Type columns are required to import a plan."); return; }
+    state.samplePlan = state.planImport.rows.map((r) => ({
+      cohort: map.cohort ? String(r[map.cohort] || "").trim() : "",
+      visit: String(r[map.visit] || "").trim(),
+      period: map.period ? String(r[map.period] || "").trim() : "",
+      timepoint: map.timepoint ? String(r[map.timepoint] || "").trim() : "",
+      sampleType: String(r[map.sampleType] || "").trim(),
+      required: map.required ? String(r[map.required] || "Y").trim() : "Y",
+    }));
+    renderPlanTable();
+    $("planMappingBox").style.display = "none";
+    $("planFileStatus").textContent = `Imported ${state.samplePlan.length} plan rows from file.`;
+  });
+
+  // ---- value aliases ----
+  function renderAliasTable() {
+    const DIMENSIONS = ["cohort", "visit", "period", "timepoint", "sampleType"];
+    $("aliasTable").innerHTML = `<tr><th>Dimension</th><th>Raw value (in the data)</th><th>Canonical value (matches the plan)</th><th></th></tr>` +
+      state.valueAliases.map((a, i) => `<tr data-idx="${i}">
+        <td><select data-field="dimension">${DIMENSIONS.map((d) => `<option value="${d}" ${d === a.dimension ? "selected" : ""}>${d}</option>`).join("")}</select></td>
+        <td><input data-field="raw" value="${esc(a.raw)}"></td>
+        <td><input data-field="canonical" value="${esc(a.canonical)}"></td>
+        <td><button class="btn secondary removeAliasRow" style="padding:3px 8px;">✕</button></td>
+      </tr>`).join("");
+  }
+  $("aliasTable").addEventListener("input", (e) => {
+    const tr = e.target.closest("tr[data-idx]");
+    if (!tr) return;
+    const field = e.target.dataset.field;
+    if (field) state.valueAliases[Number(tr.dataset.idx)][field] = e.target.value;
+  });
+  $("aliasTable").addEventListener("change", (e) => {
+    const tr = e.target.closest("tr[data-idx]");
+    if (!tr) return;
+    const field = e.target.dataset.field;
+    if (field) state.valueAliases[Number(tr.dataset.idx)][field] = e.target.value;
+  });
+  $("aliasTable").addEventListener("click", (e) => {
+    if (!e.target.classList.contains("removeAliasRow")) return;
+    const tr = e.target.closest("tr[data-idx]");
+    state.valueAliases.splice(Number(tr.dataset.idx), 1);
+    renderAliasTable();
+  });
+  $("addAliasBtn").addEventListener("click", () => {
+    state.valueAliases.push({ dimension: "timepoint", raw: "", canonical: "" });
+    renderAliasTable();
+  });
+
+  function populateStep5() {
+    populateExpectedCols();
+    renderPlanTable();
+    renderAliasTable();
+  }
+
+  $("runExpectedBtn").addEventListener("click", () => {
+    const src = $("expSource").value === "A" ? state.fileA : state.fileB;
+    const cols = {
+      subjectCol: $("expSubjCol").value, visitCol: $("expVisitCol").value, sampleTypeCol: $("expTypeCol").value,
+      cohortCol: $("expCohortCol").value || "", periodCol: $("expPeriodCol").value || "", timepointCol: $("expTimepointCol").value || "",
+    };
+    const aliases = state.valueAliases.filter((a) => a.raw && a.canonical);
+    const result = P21Recon.expectedSampleCheck(src.rows, cols, state.samplePlan, aliases);
+
+    const bySeverity = { ERROR: 0, WARNING: 0, INFO: 0 };
+    result.findings.forEach((f) => bySeverity[f.severity] = (bySeverity[f.severity] || 0) + 1);
+
+    const dash = (v) => v ? esc(v) : "—";
+    $("expectedResults").innerHTML = `
+      <div class="banner">${result.subjectCount} subjects checked · ${bySeverity.ERROR || 0} required samples missing · ${bySeverity.WARNING || 0} warnings · ${bySeverity.INFO || 0} informational</div>
+      <h2>Rollup by cohort / visit / qualifiers / sample type</h2>
+      <table><tr><th>Cohort</th><th>Visit</th><th>Period</th><th>Timepoint</th><th>Sample Type</th><th>Subjects Missing</th></tr>${result.rollup.map((r) => `<tr><td>${dash(r.cohort)}</td><td>${esc(r.visit)}</td><td>${dash(r.period)}</td><td>${dash(r.timepoint)}</td><td>${esc(r.sampleType)}</td><td>${r.subjectsMissing}</td></tr>`).join("") || "<tr><td colspan=6>None — no gaps found.</td></tr>"}</table>
+      <h2 style="margin-top:16px;">All findings</h2>
+      <table><tr><th>Subject</th><th>Cohort</th><th>Visit</th><th>Period</th><th>Timepoint</th><th>Sample Type</th><th>Severity</th><th>Issue</th></tr>${result.findings.map((f) => `<tr><td>${esc(f.subject)}</td><td>${dash(f.cohort)}</td><td>${esc(f.visit)}</td><td>${dash(f.period)}</td><td>${dash(f.timepoint)}</td><td>${esc(f.sampleType)}</td><td><span class="badge ${f.severity.toLowerCase() === "error" ? "err" : f.severity.toLowerCase() === "warning" ? "warn" : "info"}">${f.severity}</span></td><td>${esc(f.issue)}</td></tr>`).join("") || "<tr><td colspan=8>No findings.</td></tr>"}</table>
+    `;
+  });
+
+  renderStepper(1);
+})();
+</script>
+</body>
+</html>
+
