@@ -236,6 +236,30 @@
     return Math.floor(Date.UTC(cd.y, cd.mo - 1, cd.d) / 86400000);
   }
 
+  // "contains" is for field cross-checks where one source embeds extra context the
+  // other doesn't — e.g. a manifest subject number "007-001" (site + subject) vs an
+  // EDC export that only has "001" (subject alone). Deliberately NOT offered as a
+  // reconciliation join key: numeric subject suffixes like "001" recur across many
+  // sites, so using this as an identity match risks silently linking two different
+  // people. As an informational field check on a record already matched by accession
+  // ID, the failure mode is much milder (a spurious mismatch flag on a correct match),
+  // so the looser rule is worth it there. Requires the shorter value to be a prefix
+  // OR suffix of the longer (after alnum normalization), with a minimum length so a
+  // single stray digit can't "match" everything.
+  function containsMatch(a, b) {
+    const na = normAlnumUpper(a), nb = normAlnumUpper(b);
+    if (!na || !nb) return { status: "n/a" };
+    const short = na.length <= nb.length ? na : nb;
+    const long = na.length <= nb.length ? nb : na;
+    if (short.length < 2) return { status: "mismatch", note: "value too short to compare reliably" };
+    const matched = long.endsWith(short) || long.startsWith(short);
+    return {
+      status: matched ? "match" : "mismatch",
+      exact: na === nb,
+      note: matched && na !== nb ? "matched as a prefix/suffix, not identical — verify" : undefined,
+    };
+  }
+
   function compareField(valA, valB, type, toleranceDays) {
     const a = valA === undefined || valA === null ? "" : String(valA).trim();
     const b = valB === undefined || valB === null ? "" : String(valB).trim();
@@ -250,6 +274,7 @@
         ambiguous: !!(pa.ambiguous || pb.ambiguous),
       };
     }
+    if (type === "contains") return containsMatch(a, b);
     return { status: a.toUpperCase() === b.toUpperCase() ? "match" : "mismatch" };
   }
 
@@ -445,7 +470,7 @@
     normTrimUpper, normAlnumUpper, normAlnumUpperNoLeadingZeros,
     categoryForHeader, profileColumn, profileFile, computeOverlap,
     suggestKeys, reconcile, expectedSampleCheck, compareField,
-    parseCalendarDate, calendarDateToEpochDay,
+    parseCalendarDate, calendarDateToEpochDay, containsMatch,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = P21Recon;

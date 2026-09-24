@@ -467,6 +467,30 @@
     return Math.floor(Date.UTC(cd.y, cd.mo - 1, cd.d) / 86400000);
   }
 
+  // "contains" is for field cross-checks where one source embeds extra context the
+  // other doesn't — e.g. a manifest subject number "007-001" (site + subject) vs an
+  // EDC export that only has "001" (subject alone). Deliberately NOT offered as a
+  // reconciliation join key: numeric subject suffixes like "001" recur across many
+  // sites, so using this as an identity match risks silently linking two different
+  // people. As an informational field check on a record already matched by accession
+  // ID, the failure mode is much milder (a spurious mismatch flag on a correct match),
+  // so the looser rule is worth it there. Requires the shorter value to be a prefix
+  // OR suffix of the longer (after alnum normalization), with a minimum length so a
+  // single stray digit can't "match" everything.
+  function containsMatch(a, b) {
+    const na = normAlnumUpper(a), nb = normAlnumUpper(b);
+    if (!na || !nb) return { status: "n/a" };
+    const short = na.length <= nb.length ? na : nb;
+    const long = na.length <= nb.length ? nb : na;
+    if (short.length < 2) return { status: "mismatch", note: "value too short to compare reliably" };
+    const matched = long.endsWith(short) || long.startsWith(short);
+    return {
+      status: matched ? "match" : "mismatch",
+      exact: na === nb,
+      note: matched && na !== nb ? "matched as a prefix/suffix, not identical — verify" : undefined,
+    };
+  }
+
   function compareField(valA, valB, type, toleranceDays) {
     const a = valA === undefined || valA === null ? "" : String(valA).trim();
     const b = valB === undefined || valB === null ? "" : String(valB).trim();
@@ -481,6 +505,7 @@
         ambiguous: !!(pa.ambiguous || pb.ambiguous),
       };
     }
+    if (type === "contains") return containsMatch(a, b);
     return { status: a.toUpperCase() === b.toUpperCase() ? "match" : "mismatch" };
   }
 
@@ -676,7 +701,7 @@
     normTrimUpper, normAlnumUpper, normAlnumUpperNoLeadingZeros,
     categoryForHeader, profileColumn, profileFile, computeOverlap,
     suggestKeys, reconcile, expectedSampleCheck, compareField,
-    parseCalendarDate, calendarDateToEpochDay,
+    parseCalendarDate, calendarDateToEpochDay, containsMatch,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = P21Recon;
@@ -1057,7 +1082,11 @@
         <input type="text" data-field="label" value="${esc(r.label)}">
         <select data-field="colA">${allHeadersA.map((h) => `<option value="${esc(h)}" ${h === r.colA ? "selected" : ""}>${esc(h)}</option>`).join("")}</select>
         <select data-field="colB">${allHeadersB.map((h) => `<option value="${esc(h)}" ${h === r.colB ? "selected" : ""}>${esc(h)}</option>`).join("")}</select>
-        <select data-field="type"><option value="exact" ${r.type === "exact" ? "selected" : ""}>exact</option><option value="date" ${r.type === "date" ? "selected" : ""}>date</option></select>
+        <select data-field="type" title="exact: values must match exactly. date: compared as calendar dates with a tolerance window. contains: matches if the shorter value is a prefix/suffix of the longer, after normalizing — e.g. a manifest subject number '007-001' vs an EDC export's '001'. Use 'contains' only for cross-checks, never to establish identity.">
+          <option value="exact" ${r.type === "exact" ? "selected" : ""}>exact</option>
+          <option value="date" ${r.type === "date" ? "selected" : ""}>date</option>
+          <option value="contains" ${r.type === "contains" ? "selected" : ""}>contains (prefix/suffix)</option>
+        </select>
         <input type="number" min="0" data-field="toleranceDays" value="${r.toleranceDays || 0}" ${r.type === "date" ? "" : "disabled"}>
       </div>`).join("");
   }
@@ -1131,7 +1160,8 @@
           const cls = f.status === "mismatch" ? "mismatch-cell" : "";
           const valA = m.rowA[map.colA], valB = m.rowB[map.colB];
           const ambiguousNote = f.ambiguous ? ` <span class="note" title="Day/month order was ambiguous in at least one value and had to be assumed (month-first) — verify manually.">(day/month assumed ⚠)</span>` : "";
-          return `<td class="${cls}">${esc(valA)} / ${esc(valB)}${f.status === "mismatch" ? " ⚠" : ""}${ambiguousNote}</td>`;
+          const containsNote = f.note ? ` <span class="note" title="${esc(f.note)}">(${f.status === "match" ? "not identical" : "too short"} ⚠)</span>` : "";
+          return `<td class="${cls}">${esc(valA)} / ${esc(valB)}${f.status === "mismatch" ? " ⚠" : ""}${ambiguousNote}${containsNote}</td>`;
         }).join("")}
         <td class="small">${esc(m.note || "")}</td>
       </tr>`).join("") + `</table>`;

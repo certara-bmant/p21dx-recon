@@ -56,6 +56,14 @@ Real study designs are rarely one flat visit schedule. Different cohorts/arms ca
 
 What's still a manual step, deliberately: deciding which raw values need an alias in the first place. The tool doesn't attempt to suggest aliases the way it suggests column keys — value-level fuzzy-matching across an entire vendor's vocabulary is a much larger and riskier proposition than column-level matching (the failure mode is silently merging two things that are actually different, which is worse than not merging at all). If this turns out to be a frequent need, the next step would be surfacing *unmatched, non-wildcarded* qualifier values as suggested-alias candidates for human review, rather than fully automating it.
 
+## Field cross-checks with structurally different values ("contains" matching)
+
+Step 3's field mappings support a third comparison type, `contains`, for the case where one source embeds more context in a value than the other — the running example is a subject number: a manifest might record `"007-001"` (site + subject), while an EDC export only has `"001"` (subject alone). `exact` fails here even though both refer to the same subject, and there's no reasonable date-style tolerance to apply.
+
+`contains` normalizes both values (alphanumeric, uppercased) and matches if the shorter one is a prefix *or* suffix of the longer, with a minimum-length guard (values under 2 characters can't match anything, since a bare `"1"` would otherwise "match" almost any longer ID that happens to end in 1). A match that wasn't already identical is flagged with a "(not identical — verify)" note in the results table, rather than presented as indistinguishable from an exact match, and `"9"` vs `"1"` is correctly rejected rather than treated as a match on a coincidental shared digit.
+
+This is deliberately offered only for field cross-checks, not as a reconciliation join key. As a join key it would be dangerous: bare numeric subject suffixes like `"001"` recur across many sites, so matching on prefix/suffix containment risks silently linking two different subjects' records together — exactly the class of failure this whole project exists to avoid. As a cross-check on a record already identified by accession ID, the failure mode is much milder (a spurious mismatch flag on an otherwise-correct match), so the looser rule is worth having there. `test.js` verifies both the site-prefixed match and that a genuinely different subject number (`"007-014"` vs `"001"`) is correctly rejected rather than false-matched.
+
 ## Reconciling dates stored in different formats
 
 Date fields configured as `type: "date"` in Step 3 (DOB, collection date, etc.) are not compared as plain strings — they're parsed into an actual year/month/day and compared with a configurable tolerance window (e.g. "match if within 3 days"), so `"2026-02-11"` and `"11-Feb-2026"` are recognized as the same date rather than failing a literal string comparison.

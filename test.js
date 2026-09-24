@@ -77,6 +77,25 @@ sameDateFormats.forEach(([a, b]) => {
 });
 console.log("[PASS] Same calendar date compares equal across ISO / DD-MON-YYYY / MM-DD-YYYY / slash formats (no timezone artifacts).");
 
+// ---- 2c. "contains" field type — site-prefixed subject number vs bare subject number ----
+// Ben's exact scenario: a manifest subject number that embeds the site ("007-001")
+// compared against an EDC/vendor export that only carries the bare subject part
+// ("001"). Deliberately only offered as a field cross-check type, never as a
+// reconciliation join key — see the containsMatch comment in core.js for why.
+const containsCases = [
+  [["007-001", "001"], "match", false],   // site-prefixed vs bare — matches, flagged non-exact
+  [["001-007", "001"], "match", false],   // prefix variant (subject-first) also matches
+  [["007-001", "007-001"], "match", true],// identical — matches, no "verify" note
+  [["007-014", "001"], "mismatch", null], // different subject entirely — must NOT match
+  [["9", "1"], "mismatch", null],         // both too short to compare reliably — must not match
+];
+containsCases.forEach(([[a, b], expectedStatus, expectExact]) => {
+  const r = P21Recon.compareField(a, b, "contains");
+  assert.strictEqual(r.status, expectedStatus, `"${a}" vs "${b}" (contains) expected ${expectedStatus}, got: ${JSON.stringify(r)}`);
+  if (expectExact !== null) assert.strictEqual(r.exact, expectExact, `"${a}" vs "${b}" exact-flag mismatch, got: ${JSON.stringify(r)}`);
+});
+console.log("[PASS] 'contains' field type correctly matches site-prefixed vs bare subject numbers, and correctly rejects a genuinely different subject.");
+
 // genuinely ambiguous day/month order must be flagged, not silently guessed
 const ambiguousCase = P21Recon.compareField("2026-02-11", "11/02/2026", "date", 0);
 assert.strictEqual(ambiguousCase.ambiguous, true, "day-first vs month-first ambiguity must be flagged");
