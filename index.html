@@ -834,6 +834,14 @@
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v === undefined || v === null ? "" : v).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const csvEscape = (v) => { const s = String(v === undefined || v === null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  function downloadCsv(filename, lines) {
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  }
 
   const STEP_LABELS = ["1. Load Data", "2. Confirm Keys", "3. Field Mapping", "4. Results", "5. Expected Sample"];
 
@@ -1154,7 +1162,6 @@
   $("exportReconBtn").addEventListener("click", () => {
     const r = state.reconResult;
     const mappings = state.activeMappings || [];
-    const csvEscape = (v) => { const s = String(v === undefined || v === null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const lines = [];
     lines.push("SUMMARY"); lines.push("Metric,Count");
     Object.entries(r.summary).forEach(([k, v]) => lines.push(`${k},${v}`));
@@ -1173,11 +1180,7 @@
     lines.push("side,key,count");
     r.duplicates.forEach((d) => lines.push([d.side, d.key, d.count].map(csvEscape).join(",")));
 
-    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "p21_reconciliation_findings.csv";
-    a.click();
+    downloadCsv("p21_reconciliation_findings.csv", lines);
   });
 
   $("toStep5Btn").addEventListener("click", () => { populateStep5(); goToStep(5); });
@@ -1316,14 +1319,40 @@
     const bySeverity = { ERROR: 0, WARNING: 0, INFO: 0 };
     result.findings.forEach((f) => bySeverity[f.severity] = (bySeverity[f.severity] || 0) + 1);
 
+    state.expectedResult = result;
+
     const dash = (v) => v ? esc(v) : "—";
     $("expectedResults").innerHTML = `
       <div class="banner">${result.subjectCount} subjects checked · ${bySeverity.ERROR || 0} required samples missing · ${bySeverity.WARNING || 0} warnings · ${bySeverity.INFO || 0} informational</div>
+      <div class="btn-row" style="justify-content:flex-start;">
+        <button class="btn secondary" id="exportExpectedBtn">Export Report (CSV)</button>
+      </div>
       <h2>Rollup by cohort / visit / qualifiers / sample type</h2>
       <table><tr><th>Cohort</th><th>Visit</th><th>Period</th><th>Timepoint</th><th>Sample Type</th><th>Subjects Missing</th></tr>${result.rollup.map((r) => `<tr><td>${dash(r.cohort)}</td><td>${esc(r.visit)}</td><td>${dash(r.period)}</td><td>${dash(r.timepoint)}</td><td>${esc(r.sampleType)}</td><td>${r.subjectsMissing}</td></tr>`).join("") || "<tr><td colspan=6>None — no gaps found.</td></tr>"}</table>
       <h2 style="margin-top:16px;">All findings</h2>
       <table><tr><th>Subject</th><th>Cohort</th><th>Visit</th><th>Period</th><th>Timepoint</th><th>Sample Type</th><th>Severity</th><th>Issue</th></tr>${result.findings.map((f) => `<tr><td>${esc(f.subject)}</td><td>${dash(f.cohort)}</td><td>${esc(f.visit)}</td><td>${dash(f.period)}</td><td>${dash(f.timepoint)}</td><td>${esc(f.sampleType)}</td><td><span class="badge ${f.severity.toLowerCase() === "error" ? "err" : f.severity.toLowerCase() === "warning" ? "warn" : "info"}">${f.severity}</span></td><td>${esc(f.issue)}</td></tr>`).join("") || "<tr><td colspan=8>No findings.</td></tr>"}</table>
     `;
+  });
+
+  // Delegated (not bound at render time, since #exportExpectedBtn is re-created on every run)
+  $("expectedResults").addEventListener("click", (e) => {
+    if (!e.target.closest("#exportExpectedBtn")) return;
+    const r = state.expectedResult;
+    if (!r) return;
+    const lines = [];
+    lines.push("SUMMARY"); lines.push("Metric,Count");
+    lines.push(`subjectsChecked,${r.subjectCount}`);
+    const bySeverity = { ERROR: 0, WARNING: 0, INFO: 0 };
+    r.findings.forEach((f) => bySeverity[f.severity] = (bySeverity[f.severity] || 0) + 1);
+    Object.entries(bySeverity).forEach(([k, v]) => lines.push(`${k},${v}`));
+    lines.push(""); lines.push("ROLLUP BY COHORT / VISIT / QUALIFIERS / SAMPLE TYPE");
+    lines.push(["cohort", "visit", "period", "timepoint", "sampleType", "subjectsMissing"].map(csvEscape).join(","));
+    r.rollup.forEach((row) => lines.push([row.cohort, row.visit, row.period, row.timepoint, row.sampleType, row.subjectsMissing].map(csvEscape).join(",")));
+    lines.push(""); lines.push("ALL FINDINGS");
+    lines.push(["subject", "cohort", "visit", "period", "timepoint", "sampleType", "severity", "issue"].map(csvEscape).join(","));
+    r.findings.forEach((f) => lines.push([f.subject, f.cohort, f.visit, f.period, f.timepoint, f.sampleType, f.severity, f.issue].map(csvEscape).join(",")));
+
+    downloadCsv("p21_expected_sample_findings.csv", lines);
   });
 
   renderStepper(1);
