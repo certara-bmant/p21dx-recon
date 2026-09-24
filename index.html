@@ -161,8 +161,11 @@
     <div class="tabpanel" id="panel-dupes"></div>
 
     <div class="btn-row">
-      <button class="btn secondary" id="exportReconBtn">Export Findings (CSV)</button>
-      <button class="btn" id="toStep5Btn">Next: Expected-Sample Check →</button>
+      <button class="btn secondary" id="backTo3">← Back</button>
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" id="exportReconBtn">Export Findings (CSV)</button>
+        <button class="btn" id="toStep5Btn">Next: Expected-Sample Check →</button>
+      </div>
     </div>
   </section>
 
@@ -1183,6 +1186,7 @@
     downloadCsv("p21_reconciliation_findings.csv", lines);
   });
 
+  $("backTo3").addEventListener("click", () => goToStep(3));
   $("toStep5Btn").addEventListener("click", () => { populateStep5(); goToStep(5); });
   $("backTo4").addEventListener("click", () => goToStep(4));
 
