@@ -1,5 +1,5 @@
 <html><body>
-<h1>Framing Pitch 1 — P21 Reconciliation: Manifest / EDC / Vendor Data Matching &amp; Expected-Sample Validation</h1>
+<h1>Framing Pitch — P21 Reconciliation: Manifest / EDC / Vendor Data Matching &amp; Expected-Sample Validation</h1>
 <table>
 <thead>
 <tr>
@@ -18,7 +18,7 @@
 </tr>
 <tr>
 <td><strong>Pitch Type</strong></td>
-<td>Framing Pitch 1 of 2 — the reconciliation engine itself: key matching, field cross-checks, and cohort-aware expected-sample validation, run against manually uploaded files. Framing Pitch 2 covers persisted mapping/plan templates and live EDC/LIMS integration.</td>
+<td>Framing Pitch — the reconciliation engine: key matching, field cross-checks, and cohort-aware expected-sample validation, run against manually uploaded files.</td>
 </tr>
 <tr>
 <td><strong>Cycle</strong></td>
@@ -44,15 +44,11 @@
 <td><strong>Release</strong></td>
 <td>TBD</td>
 </tr>
-<tr>
-<td><strong>Followed by</strong></td>
-<td>Framing Pitch 2 — P21 Reconciliation: Persisted Mapping/Plan Templates &amp; Live EDC/LIMS Integration</td>
-</tr>
 </tbody>
 </table>
 <hr />
 <h2>📑 Pitch Summary</h2>
-<p>Give data managers a way to reconcile a sample manifest, EDC extract, or vendor/lab data file against each other — and against what the protocol actually expected — <strong>without P21 ever storing the clinical data involved</strong>. Two files are uploaded, the tool suggests which columns are really the same identifier by looking at the actual overlapping values rather than guessing from column names, a human confirms or overrides that suggestion, and the engine then reconciles records (matched / missing / duplicate / field-mismatch) and separately checks whether each subject has every sample their cohort's schedule expected. Every computation happens in the browser tab for the life of that session; closing it discards everything. The only things ever worth keeping between sessions — mapping templates, sample plans, vendor-terminology aliases — are pure configuration, never subject data, and are the explicit subject of Framing Pitch 2.</p>
+<p>Give data managers a way to reconcile a sample manifest, EDC extract, or vendor/lab data file against each other — and against what the protocol actually expected — <strong>without P21 ever storing the clinical data involved</strong>. Two files are uploaded, the tool suggests which columns are really the same identifier by looking at the actual overlapping values rather than guessing from column names, a human confirms or overrides that suggestion, and the engine then reconciles records (matched / missing / duplicate / field-mismatch) and separately checks whether each subject has every sample their cohort's schedule expected. Every computation happens in the browser tab for the life of that session; closing it discards everything. The only things ever worth keeping between sessions — mapping templates, sample plans, vendor-terminology aliases — are pure configuration, never subject data; persisting and reusing them is a reasonable future extension, but is not part of this pitch.</p>
 <hr />
 <h2>Problem</h2>
 <ul>
@@ -63,9 +59,8 @@
 </ul>
 <hr />
 <h2>🗺️ Theme / Framing</h2>
-<p>This is <strong>Framing Pitch 1 of 2</strong>. It establishes the reconciliation engine itself, run entirely client-side against manually uploaded files: reliable key suggestion that favours accession/barcode identifiers over subject-ID nomenclature, tiered matching with an honest low-confidence fallback, configurable field cross-checks (including a format-robust date comparison and a "contains" comparison for structurally nested values like a site-prefixed subject number), and a cohort/period/timepoint-aware expected-sample check that works independently of whether any identity matching has succeeded.</p>
-<p>Framing Pitch 2 would then establish the persistence and integration layer: mapping templates, sample-plan templates, and vendor-terminology alias tables saved and reused across sessions (all pure metadata — no subject data, so no Part 11 exposure), plus direct EDC/LIMS pulls so a data manager isn't manually exporting and uploading a file each time. Nothing in Pitch 1 assumes Pitch 2 will be built — the POC underpinning this pitch is already a complete, working, independently useful tool — but Pitch 1's data model (the mapping spec shape, the plan schema with its cohort/period/timepoint dimensions, the alias table shape) is exactly what Pitch 2 would persist and automate against.</p>
-<p>Splitting the two keeps each build reviewable on its own terms. Pitch 1 is completeable, shippable, and genuinely useful without Pitch 2 ever being built; Pitch 2 cannot be built without Pitch 1's data model existing first.</p>
+<p>This pitch covers the reconciliation engine itself, run entirely client-side against manually uploaded files: reliable key suggestion that favours accession/barcode identifiers over subject-ID nomenclature, tiered matching with an honest low-confidence fallback, configurable field cross-checks (including a format-robust date comparison and a "contains" comparison for structurally nested values like a site-prefixed subject number), and a cohort/period/timepoint-aware expected-sample check that works independently of whether any identity matching has succeeded.</p>
+<p>Deliberately not part of this pitch: persisting mapping templates, sample plans, or vendor-terminology aliases between sessions, and any direct EDC/LIMS integration in place of manual file upload. Both are reasonable things to come back to once this engine is in real use, but neither is needed to make this pitch's scope complete and genuinely useful on its own — the POC underpinning this pitch already works end to end without them. The data shapes involved (the mapping spec, the plan schema with its cohort/period/timepoint dimensions, the alias table) are modelled so that persistence could be added later without reworking them, but that's a note for the future, not a commitment made here.</p>
 <hr />
 <h2>👤 Persona / Customers</h2>
 <ul>
@@ -252,7 +247,7 @@
 <li><strong>Field comparison engine</strong> — exact, date (calendar-date extraction independent of platform timezone quirks, with an explicit ambiguous-order flag), and contains (prefix/suffix with a minimum-length guard), each producing a visible match/mismatch/verify state rather than a single boolean.</li>
 <li><strong>Cohort/qualifier-aware expected-sample engine</strong> — wildcard matching across cohort, period, and timepoint dimensions; plan import with user-driven column mapping; an explicit, reusable value-alias mechanism scoped per dimension.</li>
 <li><strong>CSV export</strong> for both reconciliation findings and expected-sample findings.</li>
-<li><strong>Mapping spec, plan schema, and alias-table shape modelled as stable, persistable config</strong> — nothing is persisted in this phase, but all three must be shaped so Framing Pitch 2 can store and reuse them without a data-model change.</li>
+<li><strong>Mapping spec, plan schema, and alias-table shape modelled as stable, persistable config</strong> — nothing is persisted in this build, but all three are shaped so that persistence could be added later without a data-model change, should that turn out to be worth doing.</li>
 <li>All processing is <strong>client-side and ephemeral</strong> in this build — no server, no database, no data retained beyond the active session.</li>
 </ul>
 <hr />
@@ -311,8 +306,8 @@
 <h2>❌ No-Gos &amp; Out of Scope</h2>
 <ul>
 <li><strong>No data persistence of any clinical data, at any point.</strong> This is a design constraint for this build, not a gap to close later — P21 does not become a repository for sample or subject data as a result of this pitch.</li>
-<li><strong>Live EDC/LIMS API integration</strong> — this build is manual file upload only. Direct system-to-system pulls are Framing Pitch 2.</li>
-<li><strong>Persisted mapping, plan, or alias templates</strong> — the data shapes are modelled to support this, but nothing is actually saved or reused across sessions in this phase. That's Framing Pitch 2.</li>
+<li><strong>Live EDC/LIMS API integration</strong> — this build is manual file upload only. Direct system-to-system pulls are a possible future extension, not part of this pitch.</li>
+<li><strong>Persisted mapping, plan, or alias templates</strong> — the data shapes are modelled to support this, but nothing is actually saved or reused across sessions in this build.</li>
 <li><strong>Automated value-alias suggestion</strong> — deliberately manual; see Risks above.</li>
 <li><strong>Batch or multi-vendor reconciliation in one pass</strong> — one pair of sources at a time.</li>
 <li><strong>SAS7BDAT file support.</strong></li>
