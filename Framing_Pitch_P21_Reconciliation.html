@@ -1,0 +1,321 @@
+<html><body>
+<h1>Framing Pitch 1 — P21 Reconciliation: Manifest / EDC / Vendor Data Matching &amp; Expected-Sample Validation</h1>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Author</strong></td>
+<td>Ben Mant</td>
+</tr>
+<tr>
+<td><strong>Date Created</strong></td>
+<td>2 October 2026</td>
+</tr>
+<tr>
+<td><strong>Pitch Type</strong></td>
+<td>Framing Pitch 1 of 2 — the reconciliation engine itself: key matching, field cross-checks, and cohort-aware expected-sample validation, run against manually uploaded files. Framing Pitch 2 covers persisted mapping/plan templates and live EDC/LIMS integration.</td>
+</tr>
+<tr>
+<td><strong>Cycle</strong></td>
+<td>TBD</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>DRAFT</td>
+</tr>
+<tr>
+<td><strong>Appetite</strong></td>
+<td>TBD</td>
+</tr>
+<tr>
+<td><strong>Module</strong></td>
+<td>P21 DX Reconciliation</td>
+</tr>
+<tr>
+<td><strong>Ticket</strong></td>
+<td>TBD</td>
+</tr>
+<tr>
+<td><strong>Release</strong></td>
+<td>TBD</td>
+</tr>
+<tr>
+<td><strong>Followed by</strong></td>
+<td>Framing Pitch 2 — P21 Reconciliation: Persisted Mapping/Plan Templates &amp; Live EDC/LIMS Integration</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>📑 Pitch Summary</h2>
+<p>Give data managers a way to reconcile a sample manifest, EDC extract, or vendor/lab data file against each other — and against what the protocol actually expected — <strong>without P21 ever storing the clinical data involved</strong>. Two files are uploaded, the tool suggests which columns are really the same identifier by looking at the actual overlapping values rather than guessing from column names, a human confirms or overrides that suggestion, and the engine then reconciles records (matched / missing / duplicate / field-mismatch) and separately checks whether each subject has every sample their cohort's schedule expected. Every computation happens in the browser tab for the life of that session; closing it discards everything. The only things ever worth keeping between sessions — mapping templates, sample plans, vendor-terminology aliases — are pure configuration, never subject data, and are the explicit subject of Framing Pitch 2.</p>
+<hr />
+<h2>Problem</h2>
+<ul>
+<li>P21 DX checks data for conformity against a spec today, but has no answer to the bigger, recurring data-manager need: does the sample manifest agree with the lab data? Does the lab data agree with EDC? Were all the samples the protocol called for actually collected?</li>
+<li>The PK reconciliation group's own experience with IQVIA LabMatrix surfaced the core failure mode directly: LabMatrix's matching defaults toward subject-ID and visit-name correlation, and those are exactly the fields most likely to be formatted inconsistently across a site, an EDC system, and a lab. LabMatrix's own documentation acknowledges this, citing "Accession ID and date" as the recommended match key — but the deployed matching behaviour doesn't default to that, so mismatches and missed links recur. It also requires standing up a full virtual-biorepository system — a genuine system of record — just to run a reconciliation pass, which is the opposite of what a Part-11-unvalidated tool like P21 should be doing with subject data.</li>
+<li>The alternative in active use elsewhere in the industry — tools like TrackREX — are vendor-agnostic but require a manually-built, per-study mapping table before they can run at all, re-created from scratch for every study.</li>
+<li>Nobody today has a lightweight, no-setup way to answer "did we get the samples we expected" independent of whether the harder identity-matching problem has even been solved — expected-sample checking is either bundled into a heavyweight LIMS-adjacent tool, or not done systematically at all until close to database lock.</li>
+</ul>
+<hr />
+<h2>🗺️ Theme / Framing</h2>
+<p>This is <strong>Framing Pitch 1 of 2</strong>. It establishes the reconciliation engine itself, run entirely client-side against manually uploaded files: reliable key suggestion that favours accession/barcode identifiers over subject-ID nomenclature, tiered matching with an honest low-confidence fallback, configurable field cross-checks (including a format-robust date comparison and a "contains" comparison for structurally nested values like a site-prefixed subject number), and a cohort/period/timepoint-aware expected-sample check that works independently of whether any identity matching has succeeded.</p>
+<p>Framing Pitch 2 would then establish the persistence and integration layer: mapping templates, sample-plan templates, and vendor-terminology alias tables saved and reused across sessions (all pure metadata — no subject data, so no Part 11 exposure), plus direct EDC/LIMS pulls so a data manager isn't manually exporting and uploading a file each time. Nothing in Pitch 1 assumes Pitch 2 will be built — the POC underpinning this pitch is already a complete, working, independently useful tool — but Pitch 1's data model (the mapping spec shape, the plan schema with its cohort/period/timepoint dimensions, the alias table shape) is exactly what Pitch 2 would persist and automate against.</p>
+<p>Splitting the two keeps each build reviewable on its own terms. Pitch 1 is completeable, shippable, and genuinely useful without Pitch 2 ever being built; Pitch 2 cannot be built without Pitch 1's data model existing first.</p>
+<hr />
+<h2>👤 Persona / Customers</h2>
+<ul>
+<li><strong>Clinical data managers</strong> reconciling a sample manifest against lab or vendor data — the motivating case throughout this exploration, informed directly by the PK reconciliation group's experience hitting LabMatrix's subject-nomenclature matching problem.</li>
+<li><strong>PK / biomarker reconciliation teams</strong> specifically, who today either build a bespoke SAS/Excel comparison per study or route around an existing tool's matching limitations manually.</li>
+<li><strong>Study teams and clinical operations</strong> wanting ongoing visibility into whether expected samples actually exist, rather than discovering gaps during the 1–3 month sample-reconciliation window after database lock.</li>
+<li><strong>P21 product and compliance stakeholders</strong> evaluating whether P21 can offer real reconciliation value without taking on the system-of-record, 21 CFR Part 11 data-retention burden that a tool like LabMatrix carries.</li>
+</ul>
+<hr />
+<h2>🔬 Research &amp; References</h2>
+<ul>
+<li><strong>IQVIA LabMatrix</strong> (Clinical Trial Sample &amp; Consent Tracking) — reviewed directly. A genuine virtual-biorepository product with "automated reconciliation of planned vs. actual biospecimen collection" and v10-era "fuzzy match" / "pattern matching" import features; its own materials note samples "are matched using Accession ID and date... due to limitations in visit naming," which is the same conclusion this pitch's design starts from, but isn't how the deployed matching behaves in practice.</li>
+<li><strong>TrackREX</strong> (apples-and-oranges.co.uk) — an Excel/VBA reconciliation tool, EDC/vendor-agnostic in principle, but dependent on a manually-built per-study mapping table before each use. The piece this pitch's key-suggestion engine is built to remove or shrink.</li>
+<li><strong><a href="https://github.com/certara-bmant/soa-concept-validation">soa-concept-validation</a></strong> (internal POC, certara-bmant GitHub) — metadata-driven validation of a dataset against a Schedule of Activities; established the "upload → in-memory validation → discard" architecture this pitch extends from lab-panel/test presence to full sample-level reconciliation.</li>
+<li><strong><a href="https://github.com/certara-bmant/p21dx-recon">p21dx-recon</a></strong> (internal POC, certara-bmant GitHub) — the working proof of concept underpinning this entire pitch: a single-file, client-side reconciliation tool with accession-ID-first key suggestion, tiered matching, configurable field cross-checks, cohort/qualifier-aware expected-sample validation, a value-alias mechanism for genuine cross-vendor terminology gaps, and a Node.js regression suite covering every mechanism described below.</li>
+</ul>
+<hr />
+<h2>🏆 What Does Success Look Like?</h2>
+<ul>
+<li>A user can upload any two files — a manifest, an EDC export, a vendor/lab data file — without the two sides agreeing on column names in advance, and the tool suggests the correct matching key from actual value overlap between the files, not from guessing based on column names alone.</li>
+<li>That suggestion correctly and consistently favours barcode/accession-pattern columns over subject-ID columns as the primary key, because subject-ID nomenclature is empirically the least reliable join key in this data class — site-formatted, lab-formatted, and EDC-formatted subject numbers routinely fail to coincide, while an accession number is generated once and should travel unchanged.</li>
+<li>Where the primary key is blank on a given record (a real-world data-entry gap), an optional fallback key (subject + visit + sample type) can rescue the match — and is visibly flagged as lower-confidence when it does, never presented as indistinguishable from a true accession-ID match.</li>
+<li>Field cross-checks (sex, DOB, site, collection date, subject number, etc.) support more than one comparison mode where plain exact-match genuinely isn't the right tool: dates compare as true calendar dates rather than text (so the same date in two formats doesn't falsely mismatch on a timezone artifact), with genuinely ambiguous day/month order flagged rather than silently guessed; and a "contains" mode correctly matches a site-prefixed subject number ("007-001") against a bare one ("001") from another source, while still rejecting a genuinely different subject number rather than false-matching on a coincidental shared digit.</li>
+<li>Reconciliation produces matched (high/low confidence), missing-in-A, missing-in-B, duplicate-key, and field-mismatch findings, and the whole result set exports to CSV for inclusion in study documentation.</li>
+<li>Independent of whether any of the above identity-matching succeeds, an expected-sample check validates each subject against a plan of what their <em>cohort</em> was supposed to produce, at which visit, optionally qualified by period and/or timepoint — so a reduced-schedule extension cohort doesn't get falsely flagged for samples it was never meant to draw, and a visit that draws two specimens distinguished only by timepoint (pre-dose vs. 2h post-dose) is checked correctly rather than conflated into one event.</li>
+<li>Cross-vendor terminology differences are handled honestly: cosmetic formatting differences ("PRE-DOSE" vs. "Pre Dose") resolve automatically, but a genuine vocabulary difference ("0H" meaning the same draw as "PRE-DOSE") is flagged as a discrepancy rather than silently guessed at, resolvable with one explicit, reusable alias — deliberately not auto-suggested, because guessing wrong on a value merge is worse than not merging at all, and that silent-guess failure mode is exactly what this pitch exists to avoid repeating.</li>
+<li>None of the above requires P21 to store, retain, or become a system of record for subject-level clinical data at any point. Every byte of uploaded data and every finding derived from it lives only in that browser tab for the life of the session.</li>
+</ul>
+<hr />
+<h2>🎨 Design</h2>
+<h3>Entry Point</h3>
+<p>From the P21 home screen, a <strong>Reconcile Data</strong> action opens a five-step wizard. Two data sources (any CSV or Excel file) are uploaded, with editable labels so the UI can refer to them as "Sample Manifest" / "Lab Data" rather than generic "Source A/B."</p>
+<hr />
+<h3>1. Load Data</h3>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source A / Source B upload</td>
+<td>Any CSV or Excel file; CSV is parsed without SheetJS's default type-coercion specifically to avoid date-looking text being silently turned into raw Excel serial numbers — a real bug caught and fixed during the POC build, not a hypothetical one.</td>
+</tr>
+<tr>
+<td>Editable source labels</td>
+<td>Carried through into every later results table, so findings read "Missing in Lab Data" rather than "Missing in Source B."</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3>2. Confirm the Matching Keys</h3>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Value overlap</td>
+<td>For every candidate column pair, the proportion of normalized values shared between the two files — the strongest evidence two columns are really the same identifier, since it's checking "would this actually work as a join key" rather than guessing from metadata.</td>
+</tr>
+<tr>
+<td>Name/category matching</td>
+<td>Column headers are matched against a synonym dictionary (barcode/accession, subject, visit, sample type, sex, DOB, site, collection date, cohort, period, timepoint) to weight the ranking, with a deliberate down-weighting of the generic "subject" category so it doesn't swallow compound names like <code>SubjectSex</code>.</td>
+</tr>
+<tr>
+<td>Pattern detection</td>
+<td>Columns are profiled for barcode-like formatting and high uniqueness, biasing the ranking toward accession/barcode columns as the primary key candidate over subject-ID columns even when both have plausible names.</td>
+</tr>
+<tr>
+<td>Primary key selection</td>
+<td>User confirms or overrides the top-ranked pair; the UI shows the overlap percentage and which normalization variant produced it, so the suggestion is never a black box.</td>
+</tr>
+<tr>
+<td>Fallback key (optional)</td>
+<td>Subject + visit + sample type, used only to rescue records where the primary key is blank. Where subject-ID formats are genuinely incompatible between sources, this fallback correctly rescues nothing — which is itself the evidence that accession-ID matching was required, not optional.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>On a single <code>bc_id</code>-style ambiguity for subject columns:</strong> a site-prefixed subject number ("007-001") and a bare one ("001") from another source will not show meaningful value overlap under exact or alphanumeric-normalized comparison — this is expected and correct; it's exactly why the key-suggestion engine favours the accession number instead, and why this structural mismatch is addressed as a <em>field cross-check</em> concern (see Step 3) rather than papered over in the key-matching logic itself.</p>
+<hr />
+<h3>3. Field Mapping</h3>
+<p>Auto-suggested cross-check fields (sex, DOB, site, collection date) are editable, and a user can add any additional field pair with one of three comparison types:</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Exact</td>
+<td>Case-insensitive literal match. The default for most fields.</td>
+</tr>
+<tr>
+<td>Date</td>
+<td>Parses both values into an actual calendar date (year/month/day extracted directly, not via the platform's native date parser, which treats ISO dates as UTC but other formats as local time — the exact bug that caused the same date written two ways to falsely mismatch by an hour before this was fixed) and compares with a configurable day-tolerance. A numeric date whose day/month order is genuinely ambiguous (<code>03/04/2026</code>) is flagged rather than silently guessed.</td>
+</tr>
+<tr>
+<td>Contains (prefix/suffix)</td>
+<td>For values where one source embeds more context than the other — the running example being a manifest subject number ("007-001") against an EDC export's bare subject number ("001"). Matches if the shorter normalized value is a prefix or suffix of the longer, with a minimum-length guard so a stray single digit can't "match" everything, and a genuinely different subject number ("007-014" vs. "001") is correctly rejected rather than false-matched on a coincidental shared digit. A non-exact match is flagged "not identical — verify" rather than shown as indistinguishable from a true exact match.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why "contains" is a field cross-check and not a join key:</strong> bare numeric subject suffixes like "001" recur constantly across different sites. Used to <em>establish identity</em>, prefix/suffix matching risks silently linking two unrelated subjects' records together — exactly the class of failure this whole pitch exists to avoid. Used as a cross-check on a record the accession ID has already identified, the failure mode is much milder: a spurious mismatch flag on an already-correct match, not a false link. That asymmetry is why this mode is offered only here.</p>
+<hr />
+<h3>4. Reconciliation Results</h3>
+<table>
+<thead>
+<tr>
+<th>Finding type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Matched (high confidence)</td>
+<td>Linked via the primary (accession) key.</td>
+</tr>
+<tr>
+<td>Matched (fallback key)</td>
+<td>Linked via subject + visit + sample type because the primary key was blank — visibly marked lower-confidence, with a note to verify identity.</td>
+</tr>
+<tr>
+<td>Missing in A / Missing in B</td>
+<td>A record on one side with no corresponding record on the other. Distinguishes a genuinely orphaned record from one that simply has a blank primary key and couldn't be matched at all.</td>
+</tr>
+<tr>
+<td>Duplicate keys</td>
+<td>The same accession number used for more than one draw — a real relabeling-error class, surfaced explicitly rather than silently auto-paired.</td>
+</tr>
+<tr>
+<td>Field mismatches</td>
+<td>Any configured cross-check field (sex, DOB, subject number, etc.) that disagreed between the matched pair, using whichever comparison type was configured for that field.</td>
+</tr>
+</tbody>
+</table>
+<p>A Back button returns to Step 3 (and from there, Step 2) so key or field-mapping choices can be revised and reconciliation re-run without losing existing selections, if a result set doesn't look right. Results export to CSV for inclusion in study documentation.</p>
+<hr />
+<h3>5. Expected-Sample Reconciliation</h3>
+<p>Independent of whether the identity-matching problem above is solved at all: given a sample plan, checks whether each subject has everything <em>their cohort's</em> plan expected.</p>
+<table>
+<thead>
+<tr>
+<th>Plan dimension</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cohort / arm</td>
+<td>Optional per plan row. A blank cohort applies to every cohort; a row with a cohort set only applies to subjects resolved to that cohort — so a reduced-schedule extension cohort only needs its own rows for what actually differs, not a full duplicated schedule.</td>
+</tr>
+<tr>
+<td>Visit</td>
+<td>The scheduled timepoint in the protocol sense (e.g. "WEEK 4").</td>
+</tr>
+<tr>
+<td>Period / Timepoint</td>
+<td>Optional qualifiers beneath a visit. Blank means "don't care"; set, it must match — so a visit that draws two specimens distinguished only by timepoint (pre-dose vs. 2h post-dose) is modelled correctly without forcing every plan row to specify a timepoint it doesn't need.</td>
+</tr>
+<tr>
+<td>Sample type / Required</td>
+<td>What's expected, and whether its absence is an error, a warning, or informational.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Plan import:</strong> the plan can be typed inline or imported from any CSV/XLSX, with the same user-driven column-mapping pattern used everywhere else in the tool — no fixed schema required.</p>
+<p><strong>On cross-vendor qualifier terminology:</strong> comparison of cohort/visit/period/timepoint/sample-type values is alphanumeric-normalized by default, so cosmetic differences ("PRE-DOSE" vs. "Pre Dose") resolve with zero configuration. A genuine vocabulary difference ("0H" meaning the same draw as "PRE-DOSE") does not resolve on its own — it surfaces as a flagged discrepancy until an explicit value alias (<code>dimension → raw value → canonical value</code>) is added. Aliases apply only to whichever source is being checked, never to the plan itself, and are — like the plan — pure metadata, not subject data.</p>
+<p><strong>On subject disposition:</strong> a subject who dropped out partway through the study will currently be flagged as missing the samples they were never going to give for visits after their last one. This is a known, explicitly stated limitation rather than a silent gap — see Risks below.</p>
+<p>Results (rollup by cohort/visit/qualifiers/sample type, and the full findings list) export to CSV, same as Step 4.</p>
+<hr />
+<h2>✍️ Starter Pack of Requirements</h2>
+<ul>
+<li><strong>CSV/Excel parser with no silent type coercion</strong> — hand-rolled CSV parsing specifically to prevent date-looking text being turned into Excel serial numbers; Excel files handled via SheetJS with explicit date formatting.</li>
+<li><strong>Column profiling and key-suggestion engine</strong> — value-overlap scoring across every candidate column pair, a header-name synonym dictionary (with a deliberate down-weighting of the generic "subject" category), and barcode/date/numeric pattern detection, combined into a single ranked suggestion with an editable override.</li>
+<li><strong>Tiered reconciliation engine</strong> — primary-key matching first, optional fallback-key matching for blank-primary-key records, duplicate-key detection, and a configurable set of field cross-checks.</li>
+<li><strong>Field comparison engine</strong> — exact, date (calendar-date extraction independent of platform timezone quirks, with an explicit ambiguous-order flag), and contains (prefix/suffix with a minimum-length guard), each producing a visible match/mismatch/verify state rather than a single boolean.</li>
+<li><strong>Cohort/qualifier-aware expected-sample engine</strong> — wildcard matching across cohort, period, and timepoint dimensions; plan import with user-driven column mapping; an explicit, reusable value-alias mechanism scoped per dimension.</li>
+<li><strong>CSV export</strong> for both reconciliation findings and expected-sample findings.</li>
+<li><strong>Mapping spec, plan schema, and alias-table shape modelled as stable, persistable config</strong> — nothing is persisted in this phase, but all three must be shaped so Framing Pitch 2 can store and reuse them without a data-model change.</li>
+<li>All processing is <strong>client-side and ephemeral</strong> in this build — no server, no database, no data retained beyond the active session.</li>
+</ul>
+<hr />
+<h2>📊 Analytics &amp; Tracking</h2>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Properties</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Reconciliation Data Loaded</code></td>
+<td>row count per source, column count per source, file type (CSV/Excel)</td>
+</tr>
+<tr>
+<td><code>Key Suggestion Reviewed</code></td>
+<td>suggested primary key category (barcode vs. other), overlap %, whether the user accepted or overrode it</td>
+</tr>
+<tr>
+<td><code>Reconciliation Run</code></td>
+<td>matched (high/low) count, missing-in-A/B count, duplicate-key count, field-mismatch count</td>
+</tr>
+<tr>
+<td><code>Field Mismatch Flagged</code></td>
+<td>comparison type (exact/date/contains), field label, ambiguous or non-exact flag (Y/N)</td>
+</tr>
+<tr>
+<td><code>Expected-Sample Check Run</code></td>
+<td>subject count, cohort count, error/warning/info finding counts</td>
+</tr>
+<tr>
+<td><code>Value Alias Added</code></td>
+<td>dimension (cohort/visit/period/timepoint/sample type)</td>
+</tr>
+<tr>
+<td><code>Findings Exported</code></td>
+<td>export type (reconciliation / expected-sample), finding count</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>🐰 Risks &amp; Rabbit Holes</h2>
+<h3>Internal Factors</h3>
+<p><strong>Ambiguous numeric dates aren't fully resolvable</strong> — <code>03/04/2026</code> is genuinely ambiguous between 3-Apr and 4-Mar with no per-column format hint. The engine defaults to month-first and flags the assumption rather than guessing silently, but that's a flag for human review, not a resolution. A later phase would want an explicit per-field format selector.</p>
+<p><strong>Name-based category matching is a heuristic, not NLP</strong> — compound header names are resolved with a token-preference rule tuned against realistic naming conventions, not true language understanding. Every suggestion remains editable before use, which is the intended safeguard, not a workaround.</p>
+<p><strong>Duplicate keys pair by row order, not by additional context</strong> — if a key is duplicated on both sides, only the first occurrence on each side is auto-paired; the rest are surfaced as both a duplicate-key finding and an unmatched record for manual review, rather than guessed at.</p>
+<p><strong>Expected-sample check doesn't know about subject disposition</strong> — a genuine dropout is, correctly but bluntly, flagged as missing samples for visits after their last one. A production version would cross-reference disposition/early-termination data before flagging.</p>
+<p><strong>Value-alias suggestion is entirely manual, by design</strong> — the engine does not attempt to guess that two differently-spelled qualifier values mean the same thing, because a wrong guess there is a silent false merge — the exact failure mode this whole pitch is built to avoid repeating from the LabMatrix experience. This is a deliberate scope boundary, not an oversight, but it does mean value-alias setup doesn't get easier on its own as more studies are reconciled.</p>
+<p><strong>Cohort resolution reads from one source at a time</strong> — the expected-sample check reads cohort/period/timepoint from whichever single source is being checked; it does not cross-validate that two sources agree on a subject's cohort, partly because cohort/arm assignment is typically an EDC/site construct that vendor lab exports don't echo back at all.</p>
+<h3>External Factors</h3>
+<p>EDC, LIMS, and vendor export formats vary by sponsor and by vendor, and will keep varying — no two organisations format subject IDs, visit names, or timepoint labels the same way. The synonym dictionaries and normalization rules will need broadening as real files are run through this beyond the demonstration dataset.</p>
+<p>CSV and Excel only in this phase — no SAS7BDAT support. A server-side option (the approach the earlier soa-concept-validation POC used, via <code>pyreadstat</code>) is available if that format turns out to be a frequent real-world need.</p>
+<hr />
+<h2>❌ No-Gos &amp; Out of Scope</h2>
+<ul>
+<li><strong>No data persistence of any clinical data, at any point.</strong> This is a design constraint for this build, not a gap to close later — P21 does not become a repository for sample or subject data as a result of this pitch.</li>
+<li><strong>Live EDC/LIMS API integration</strong> — this build is manual file upload only. Direct system-to-system pulls are Framing Pitch 2.</li>
+<li><strong>Persisted mapping, plan, or alias templates</strong> — the data shapes are modelled to support this, but nothing is actually saved or reused across sessions in this phase. That's Framing Pitch 2.</li>
+<li><strong>Automated value-alias suggestion</strong> — deliberately manual; see Risks above.</li>
+<li><strong>Batch or multi-vendor reconciliation in one pass</strong> — one pair of sources at a time.</li>
+<li><strong>SAS7BDAT file support.</strong></li>
+<li><strong>Any editing or save-back of source data</strong> — every view in this build is read-only with respect to the uploaded files.</li>
+</ul>
+</body></html>
