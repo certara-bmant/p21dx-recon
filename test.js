@@ -36,6 +36,7 @@ const fallbackKey = {
 const demographicMappings = [
   { label: "Sex", colA: "SubjectSex", colB: "Sex", type: "exact" },
   { label: "DOB", colA: "SubjectDOB", colB: "DOB", type: "date", toleranceDays: 0 },
+  { label: "Collection Time", colA: "CollectionTime", colB: "DrawTime", type: "time", toleranceDays: 15 },
 ];
 
 const result = P21Recon.reconcile({ rowsA: manifestRows, rowsB: labRows, primaryKey, fallbackKey, demographicMappings });
@@ -57,7 +58,17 @@ const sexMismatches = allMatched.filter((m) => m.rowA.SiteSubjNo === "07-014" &&
 assert.ok(dobMismatches.length > 0, "subject 5 DOB mismatch should be detected");
 assert.ok(sexMismatches.length > 0, "subject 14 Sex mismatch should be detected");
 
-console.log("[PASS] Duplicate accession, orphan record, and demographic mismatches all detected correctly.");
+// subject 9's WEEK 4 PK Trough draw time is a deliberate ~2h15m timing error
+// (CollectionTime 07:45 vs DrawTime 10:00 AM) — must be flagged at a 15-minute
+// tolerance, while every other subject's benign ±0-2 minute clock-sync noise
+// must NOT be flagged at that same tolerance.
+const timeMismatches = allMatched.filter((m) => m.fieldResults.find((f) => f.label === "Collection Time" && f.status === "mismatch"));
+assert.strictEqual(timeMismatches.length, 1, `expected exactly one Collection Time mismatch, got: ${JSON.stringify(timeMismatches.map((m) => m.rowA.SiteSubjNo))}`);
+assert.strictEqual(timeMismatches[0].rowA.SiteSubjNo, "07-009", "the single Collection Time mismatch should be subject 9");
+const subj9TimeField = timeMismatches[0].fieldResults.find((f) => f.label === "Collection Time");
+assert.strictEqual(subj9TimeField.diffMinutes, 135, `expected subject 9's draw-time gap to be 135 minutes, got: ${JSON.stringify(subj9TimeField)}`);
+
+console.log("[PASS] Duplicate accession, orphan record, demographic mismatches, and the subject 9 draw-time error all detected correctly.");
 
 // ---- 2b. cross-format date comparison (regression guard) ----
 // Same calendar date, three different textual formats — must all report zero

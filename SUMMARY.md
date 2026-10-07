@@ -19,7 +19,7 @@ Real studies rarely have one flat schedule, so the plan handles the messier real
 
 That still leaves the question of naming. A cosmetic difference — "PRE-DOSE" in one file, "Pre Dose" in another — is recognized automatically. A genuine difference in vocabulary — one vendor calling the same draw "0H" instead of any spelling of "pre-dose" — is not silently guessed at; it shows up as a flagged discrepancy until someone tells the tool, once, that the two mean the same thing. That one-line correction is then reusable, the same way the plan itself is reusable.
 
-Click "Load Demo Data" on the first screen and it runs through a realistic example immediately, including a few deliberately broken cases (a sample that was never collected, a lost accession number, a mislabeled reused barcode, two demographic typos, and a reduced-schedule cohort) so you can see exactly what each type of finding looks like.
+Click "Load Demo Data" on the first screen and it runs through a realistic example immediately, including a few deliberately broken cases (a sample that was never collected, a lost accession number, a mislabeled reused barcode, two demographic typos, a draw time logged two hours late by the lab, and a reduced-schedule cohort) so you can see exactly what each type of finding looks like.
 
 ## Why it doesn't need to "store" anything
 

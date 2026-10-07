@@ -272,6 +272,13 @@
     RACE: ["race", "ethnicity"],
     SITE: ["site", "siteid", "siteno", "center", "centre", "centerid"],
     COLLECTDATE: ["collectiondate", "drawdate", "sampledate", "receiveddate", "collectdt", "draweddate"],
+    // Separate from COLLECTDATE deliberately — a site's "nominal protocol time"
+    // and the lab's "actual draw time" are a time-of-day/datetime comparison
+    // (type: "time"/"datetime"), not a calendar-date one. Exact-match synonyms
+    // here (e.g. "collectiontime") score 1.0 and correctly outrank TIMEPOINT's
+    // generic "time" substring synonym (0.7), which only matches real timepoint-
+    // qualifier columns like "Timepoint" itself.
+    COLLECTTIME: ["collectiontime", "collecttime", "drawtime", "sampletime", "timeofcollection", "actualdrawtime", "draweddtime", "draweddatetime"],
     COHORT: ["cohort", "arm", "armcd", "treatmentarm", "group", "cohortid", "cohortname"],
     PERIOD: ["period", "periodnum", "cycle", "cycleno"],
     TIMEPOINT: ["timepoint", "tpt", "time"],
@@ -807,18 +814,44 @@
   // Cohort A (subjects 1-15): full PK schedule — trough + peak at WEEK 4 and WEEK 8,
   // with WEEK 4's two draws distinguished by a timepoint qualifier.
   // Cohort B (subjects 16-20): reduced/extension cohort — trough only, no peak, ever.
+  // `time` is the nominal/site-recorded clock time for that draw (24hr HH:MM) —
+  // separate from `collectionDate`, so the demo can exercise the "time" field
+  // comparison type (a draw-time column kept apart from the collection date).
   const COHORT_A_EVENTS = [
-    { visit: "SCREENING", sampleType: "PD Biomarker", timepoint: "" },
-    { visit: "WEEK 4", sampleType: "PK Trough", timepoint: "PRE-DOSE" },
-    { visit: "WEEK 4", sampleType: "PK Peak", timepoint: "2H POST" },
-    { visit: "WEEK 8", sampleType: "PK Trough", timepoint: "" },
-    { visit: "WEEK 8", sampleType: "PK Peak", timepoint: "" },
+    { visit: "SCREENING", sampleType: "PD Biomarker", timepoint: "", time: "08:00" },
+    { visit: "WEEK 4", sampleType: "PK Trough", timepoint: "PRE-DOSE", time: "07:45" },
+    { visit: "WEEK 4", sampleType: "PK Peak", timepoint: "2H POST", time: "09:45" },
+    { visit: "WEEK 8", sampleType: "PK Trough", timepoint: "", time: "07:50" },
+    { visit: "WEEK 8", sampleType: "PK Peak", timepoint: "", time: "09:50" },
   ];
   const COHORT_B_EVENTS = [
-    { visit: "SCREENING", sampleType: "PD Biomarker", timepoint: "" },
-    { visit: "WEEK 4", sampleType: "PK Trough", timepoint: "PRE-DOSE" },
-    { visit: "WEEK 8", sampleType: "PK Trough", timepoint: "" },
+    { visit: "SCREENING", sampleType: "PD Biomarker", timepoint: "", time: "08:00" },
+    { visit: "WEEK 4", sampleType: "PK Trough", timepoint: "PRE-DOSE", time: "07:45" },
+    { visit: "WEEK 8", sampleType: "PK Trough", timepoint: "", time: "07:50" },
   ];
+
+  // ---------- time helpers for CollectionTime (manifest, 24hr) vs DrawTime (lab, 12hr) ----------
+  function addMinutesTo24h(hhmm, deltaMin) {
+    const [h, m] = hhmm.split(":").map(Number);
+    let total = ((h * 60 + m + deltaMin) % 1440 + 1440) % 1440;
+    return { hh: Math.floor(total / 60), mm: total % 60 };
+  }
+  function to12Hour(hh, mm) {
+    const period = hh < 12 ? "AM" : "PM";
+    let h12 = hh % 12;
+    if (h12 === 0) h12 = 12;
+    return `${h12}:${String(mm).padStart(2, "0")} ${period}`;
+  }
+  // Most subjects: a couple of minutes' benign clock-sync noise between the
+  // site's watch and the lab's logged-receipt time — well within any reasonable
+  // tolerance. Subject 9 is the deliberate exception: the lab's WEEK 4 PK Trough
+  // draw time is logged over two hours later than the site recorded it — a
+  // genuine timing error (not noise) that matters for a trough sample
+  // specifically, since the whole point of a trough draw is *when* it happens.
+  function drawTimeJitterMinutes(n, ev) {
+    if (n === 9 && ev.visit === "WEEK 4" && ev.sampleType === "PK Trough") return 135;
+    return (n % 5) - 2; // -2..+2 minutes
+  }
 
   const visitLabelMap = { SCREENING: "Screening", "WEEK 4": "Wk4", "WEEK 8": "Wk8" };
   const sampleTypeMap = { "PD Biomarker": "PD-Biomarker", "PK Trough": "PK-Trough", "PK Peak": "PK-Peak" };
@@ -836,8 +869,8 @@
   ];
 
   function buildDemoData() {
-    const manifestHeaders = ["SiteSubjNo", "Cohort", "VisitLabel", "SpecimenType", "Timepoint", "AccessionNo", "CollectionDate", "SubjectSex", "SubjectDOB"];
-    const labHeaders = ["LabPatientID", "VisitName", "Analyte", "AccessionNumber", "ReceivedDate", "Sex", "DOB"];
+    const manifestHeaders = ["SiteSubjNo", "Cohort", "VisitLabel", "SpecimenType", "Timepoint", "AccessionNo", "CollectionDate", "CollectionTime", "SubjectSex", "SubjectDOB"];
+    const labHeaders = ["LabPatientID", "VisitName", "Analyte", "AccessionNumber", "ReceivedDate", "DrawTime", "Sex", "DOB"];
 
     const manifestRows = [];
     const labRows = [];
@@ -872,6 +905,9 @@
         const labVisit = visitLabelMap[ev.visit];
         const labType = sampleTypeMap[ev.sampleType];
         const collectionDate = `2026-0${1 + (n % 6)}-1${n % 8}`;
+        const manifestTime = ev.time;
+        const { hh: labHH, mm: labMM } = addMinutesTo24h(ev.time, drawTimeJitterMinutes(n, ev));
+        const labTime = to12Hour(labHH, labMM);
 
         // Subject 7, WEEK 4 / PK Peak: manifest accession left blank (data-entry gap).
         // The lab still received *a* sample and logged its own accession number,
@@ -880,12 +916,12 @@
         if (n === 7 && ev.visit === "WEEK 4" && ev.sampleType === "PK Peak") {
           manifestRows.push({
             SiteSubjNo: subjA, Cohort: cohort, VisitLabel: manifestVisit, SpecimenType: manifestType, Timepoint: ev.timepoint,
-            AccessionNo: "", CollectionDate: collectionDate,
+            AccessionNo: "", CollectionDate: collectionDate, CollectionTime: manifestTime,
             SubjectSex: dem.manifestSex, SubjectDOB: dem.manifestDOB,
           });
           labRows.push({
             LabPatientID: subjB, VisitName: labVisit, Analyte: labType,
-            AccessionNumber: nextAccession(), ReceivedDate: collectionDate,
+            AccessionNumber: nextAccession(), ReceivedDate: collectionDate, DrawTime: labTime,
             Sex: dem.labSex, DOB: dem.labDOB,
           });
           continue;
@@ -897,12 +933,12 @@
           const sharedAcc = "PK012000";
           manifestRows.push({
             SiteSubjNo: subjA, Cohort: cohort, VisitLabel: manifestVisit, SpecimenType: manifestType, Timepoint: ev.timepoint,
-            AccessionNo: sharedAcc, CollectionDate: collectionDate,
+            AccessionNo: sharedAcc, CollectionDate: collectionDate, CollectionTime: manifestTime,
             SubjectSex: dem.manifestSex, SubjectDOB: dem.manifestDOB,
           });
           labRows.push({
             LabPatientID: subjB, VisitName: labVisit, Analyte: labType,
-            AccessionNumber: sharedAcc, ReceivedDate: collectionDate,
+            AccessionNumber: sharedAcc, ReceivedDate: collectionDate, DrawTime: labTime,
             Sex: dem.labSex, DOB: dem.labDOB,
           });
           continue;
@@ -914,12 +950,12 @@
         const accLabFormatted = acc.slice(0, 2) + "-" + acc.slice(2); // "PK-000101"
         manifestRows.push({
           SiteSubjNo: subjA, Cohort: cohort, VisitLabel: manifestVisit, SpecimenType: manifestType, Timepoint: ev.timepoint,
-          AccessionNo: acc, CollectionDate: collectionDate,
+          AccessionNo: acc, CollectionDate: collectionDate, CollectionTime: manifestTime,
           SubjectSex: dem.manifestSex, SubjectDOB: dem.manifestDOB,
         });
         labRows.push({
           LabPatientID: subjB, VisitName: labVisit, Analyte: labType,
-          AccessionNumber: accLabFormatted, ReceivedDate: collectionDate,
+          AccessionNumber: accLabFormatted, ReceivedDate: collectionDate, DrawTime: labTime,
           Sex: dem.labSex, DOB: dem.labDOB,
         });
       }
@@ -1133,7 +1169,7 @@
 
   // ---------- Step 3: field mapping ----------
   function autoSuggestFields() {
-    const cats = ["SEX", "DOB", "AGE", "RACE", "SITE", "COLLECTDATE"];
+    const cats = ["SEX", "DOB", "AGE", "RACE", "SITE", "COLLECTDATE", "COLLECTTIME"];
     const rows = [];
     for (const cat of cats) {
       const colA = state.fileA.headers.find((h) => P21Recon.categoryForHeader(h).category === cat && P21Recon.categoryForHeader(h).score >= 0.6);
@@ -1141,10 +1177,10 @@
       if (colA && colB) {
         rows.push({
           include: true,
-          label: cat === "COLLECTDATE" ? "Collection Date" : cat.charAt(0) + cat.slice(1).toLowerCase(),
+          label: cat === "COLLECTDATE" ? "Collection Date" : cat === "COLLECTTIME" ? "Collection Time" : cat.charAt(0) + cat.slice(1).toLowerCase(),
           colA, colB,
-          type: (cat === "DOB" || cat === "COLLECTDATE") ? "date" : "exact",
-          toleranceDays: cat === "COLLECTDATE" ? 3 : 0,
+          type: (cat === "DOB" || cat === "COLLECTDATE") ? "date" : cat === "COLLECTTIME" ? "time" : "exact",
+          toleranceDays: cat === "COLLECTDATE" ? 3 : cat === "COLLECTTIME" ? 15 : 0,
         });
       }
     }

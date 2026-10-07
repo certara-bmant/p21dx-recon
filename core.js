@@ -38,6 +38,13 @@
     RACE: ["race", "ethnicity"],
     SITE: ["site", "siteid", "siteno", "center", "centre", "centerid"],
     COLLECTDATE: ["collectiondate", "drawdate", "sampledate", "receiveddate", "collectdt", "draweddate"],
+    // Separate from COLLECTDATE deliberately — a site's "nominal protocol time"
+    // and the lab's "actual draw time" are a time-of-day/datetime comparison
+    // (type: "time"/"datetime"), not a calendar-date one. Exact-match synonyms
+    // here (e.g. "collectiontime") score 1.0 and correctly outrank TIMEPOINT's
+    // generic "time" substring synonym (0.7), which only matches real timepoint-
+    // qualifier columns like "Timepoint" itself.
+    COLLECTTIME: ["collectiontime", "collecttime", "drawtime", "sampletime", "timeofcollection", "actualdrawtime", "draweddtime", "draweddatetime"],
     COHORT: ["cohort", "arm", "armcd", "treatmentarm", "group", "cohortid", "cohortname"],
     PERIOD: ["period", "periodnum", "cycle", "cycleno"],
     TIMEPOINT: ["timepoint", "tpt", "time"],
