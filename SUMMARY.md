@@ -27,9 +27,11 @@ Everything happens inside the browser tab. Nothing gets uploaded to a server, sa
 
 The only thing worth keeping between sessions is the *setup* — which columns to match on, what the expected sample plan looks like for a given protocol, which vendor terms mean the same thing — because that's all just configuration, not subject data.
 
-## A note on dates
+## A note on dates, times, and timestamps
 
 Dates get their own small piece of care: they're compared as actual calendar dates, not as text, so "2026-02-11" and "11-Feb-2026" are correctly recognized as the same day. This mattered in practice — an earlier version of the date comparison had a subtle bug where the *same* date written two different ways could come back looking like it differed by an hour, purely because of how the browser's own date parser handles timezones differently depending on format. That's fixed. What's still an open question is genuinely ambiguous dates like "03/04/2026" — nothing can know for certain whether that's the 3rd of April or the 4th of March without being told, so the tool flags that case for a human to check rather than quietly picking one.
+
+Two more comparison types handle time, for fields where the date-only check isn't precise enough — a PK draw time, say, where a 6-minute difference might genuinely matter. A "datetime" field compares date and time together with a tolerance in minutes rather than days, and still catches the ambiguous-date case above even when a time is attached. A "time" field compares just the time of day on its own (accepting either "14:30" or "2:30 PM" style and treating them as the same), for a draw-time column that's kept separate from the collection date.
 
 ## What it isn't (yet)
 

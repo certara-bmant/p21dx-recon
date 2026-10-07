@@ -61,7 +61,10 @@
   .tabpanel.active { display: block; }
   .mismatch-cell { background: #fbe6e4; }
   .note { font-size: 11.5px; color: var(--gray); font-style: italic; }
-  .field-row { display: grid; grid-template-columns: 24px 110px 1fr 1fr 90px 90px; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .field-row { display: grid; grid-template-columns: 24px 110px 1fr 1fr 130px 100px; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .tol-cell { display: flex; align-items: center; gap: 4px; }
+  .tol-cell input[type="number"] { width: 60px; }
+  .tol-unit { font-size: 11px; color: var(--gray); }
   .field-row.header-row { font-size: 11px; color: var(--gray); font-weight: 600; }
   .banner { background: var(--lightblue); border: 1px solid #b9d3ef; border-radius: 8px; padding: 10px 14px; font-size: 12.5px; color: var(--navy); margin-bottom: 16px; }
   .small { font-size: 11.5px; color: var(--gray); }
@@ -134,8 +137,8 @@
   <!-- STEP 3: FIELD MAPPING -->
   <section class="card" id="step3" style="display:none">
     <h2>Step 3 — Fields to cross-check</h2>
-    <p class="hint">Suggested from column names/categories. Uncheck anything irrelevant, adjust date tolerance where a few days' difference is acceptable, or add your own.</p>
-    <div class="field-row header-row"><span></span><span>Label</span><span>Source A column</span><span>Source B column</span><span>Type</span><span>Tolerance (days)</span></div>
+    <p class="hint">Suggested from column names/categories. Uncheck anything irrelevant, adjust tolerance where a small difference is acceptable (days for date, minutes for datetime/time), or add your own.</p>
+    <div class="field-row header-row"><span></span><span>Label</span><span>Source A column</span><span>Source B column</span><span>Type</span><span>Tolerance</span></div>
     <div id="fieldRows"></div>
     <button class="btn secondary" id="addFieldBtn" style="margin-top:8px;">+ Add field</button>
     <div class="btn-row">
@@ -467,6 +470,59 @@
     return Math.floor(Date.UTC(cd.y, cd.mo - 1, cd.d) / 86400000);
   }
 
+  // ---------- datetime / time-of-day parsing ----------
+  // Built on top of parseCalendarDate rather than duplicating its format list.
+  // A trailing time component — "T14:30:00", " 14:30", " 2:30 PM" — is split off
+  // first; whatever date text remains is handed to parseCalendarDate exactly as
+  // before. That matters because it means a genuinely ambiguous numeric date like
+  // "03/04/2026 14:30" still gets its day/month order flagged for review, instead
+  // of silently falling through to the platform's own Date.parse guess (which is
+  // what happens for any trailing-time string that doesn't go through this path).
+  const TIME_SUFFIX_RE = /^(.*?)[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?\s*(?:Z|[+\-]\d{2}:?\d{2})?$/;
+  const TIME_ONLY_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?$/;
+
+  function buildTimeParts(hStr, miStr, sStr, ampm) {
+    let h = Number(hStr), mi = Number(miStr), s = sStr ? Number(sStr) : 0;
+    if (Number.isNaN(h) || Number.isNaN(mi) || Number.isNaN(s)) return null;
+    if (ampm) {
+      const isPM = /p/i.test(ampm);
+      h = h % 12;
+      if (isPM) h += 12;
+    }
+    if (h > 23 || mi > 59 || s > 59) return null;
+    return { h, mi, s };
+  }
+
+  // Time-of-day only, no date part — e.g. a standalone "actual draw time" field
+  // that's reconciled independently of the collection date column.
+  function parseTimeOfDay(str) {
+    const s = String(str === undefined || str === null ? "" : str).trim();
+    if (!s) return null;
+    const m = s.match(TIME_ONLY_RE);
+    if (!m) return null;
+    return buildTimeParts(m[1], m[2], m[3], m[4]);
+  }
+
+  // Full date + time. Falls back to date-only (midnight) when no time suffix is
+  // present, so a "datetime" field still works against a plain date value.
+  function parseDateTime(str) {
+    const s = String(str === undefined || str === null ? "" : str).trim();
+    if (!s) return null;
+    const m = s.match(TIME_SUFFIX_RE);
+    if (m) {
+      const cd = parseCalendarDate(m[1]);
+      const tm = buildTimeParts(m[2], m[3], m[4], m[5]);
+      if (cd && tm) return { ...cd, ...tm, hasTime: true };
+    }
+    const cd = parseCalendarDate(s);
+    if (cd) return { ...cd, h: 0, mi: 0, s: 0, hasTime: false };
+    return null;
+  }
+
+  function dateTimeToEpochMinutes(p) {
+    return calendarDateToEpochDay(p) * 1440 + (p.h || 0) * 60 + (p.mi || 0);
+  }
+
   // "contains" is for field cross-checks where one source embeds extra context the
   // other doesn't — e.g. a manifest subject number "007-001" (site + subject) vs an
   // EDC export that only has "001" (subject alone). Deliberately NOT offered as a
@@ -491,7 +547,7 @@
     };
   }
 
-  function compareField(valA, valB, type, toleranceDays) {
+  function compareField(valA, valB, type, tolerance) {
     const a = valA === undefined || valA === null ? "" : String(valA).trim();
     const b = valB === undefined || valB === null ? "" : String(valB).trim();
     if (!a || !b) return { status: "n/a" };
@@ -500,10 +556,30 @@
       if (!pa || !pb) return { status: a.toUpperCase() === b.toUpperCase() ? "match" : "mismatch" };
       const diffDays = Math.abs(calendarDateToEpochDay(pa) - calendarDateToEpochDay(pb));
       return {
-        status: diffDays <= (toleranceDays || 0) ? "match" : "mismatch",
+        status: diffDays <= (tolerance || 0) ? "match" : "mismatch",
         diffDays,
         ambiguous: !!(pa.ambiguous || pb.ambiguous),
       };
+    }
+    // "datetime": date + time, tolerance in minutes. Reuses parseCalendarDate's
+    // format coverage and ambiguity flag for the date portion (see parseDateTime).
+    if (type === "datetime") {
+      const pa = parseDateTime(a), pb = parseDateTime(b);
+      if (!pa || !pb) return { status: a.toUpperCase() === b.toUpperCase() ? "match" : "mismatch" };
+      const diffMinutes = Math.abs(dateTimeToEpochMinutes(pa) - dateTimeToEpochMinutes(pb));
+      return {
+        status: diffMinutes <= (tolerance || 0) ? "match" : "mismatch",
+        diffMinutes,
+        ambiguous: !!(pa.ambiguous || pb.ambiguous),
+      };
+    }
+    // "time": time-of-day only, no date — e.g. an "actual draw time" field kept
+    // separate from the collection-date column. Tolerance in minutes.
+    if (type === "time") {
+      const pa = parseTimeOfDay(a), pb = parseTimeOfDay(b);
+      if (!pa || !pb) return { status: a.toUpperCase() === b.toUpperCase() ? "match" : "mismatch" };
+      const diffMinutes = Math.abs((pa.h * 60 + pa.mi) - (pb.h * 60 + pb.mi));
+      return { status: diffMinutes <= (tolerance || 0) ? "match" : "mismatch", diffMinutes };
     }
     if (type === "contains") return containsMatch(a, b);
     return { status: a.toUpperCase() === b.toUpperCase() ? "match" : "mismatch" };
@@ -702,6 +778,7 @@
     categoryForHeader, profileColumn, profileFile, computeOverlap,
     suggestKeys, reconcile, expectedSampleCheck, compareField,
     parseCalendarDate, calendarDateToEpochDay, containsMatch,
+    parseDateTime, parseTimeOfDay, dateTimeToEpochMinutes,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = P21Recon;
@@ -1082,12 +1159,17 @@
         <input type="text" data-field="label" value="${esc(r.label)}">
         <select data-field="colA">${allHeadersA.map((h) => `<option value="${esc(h)}" ${h === r.colA ? "selected" : ""}>${esc(h)}</option>`).join("")}</select>
         <select data-field="colB">${allHeadersB.map((h) => `<option value="${esc(h)}" ${h === r.colB ? "selected" : ""}>${esc(h)}</option>`).join("")}</select>
-        <select data-field="type" title="exact: values must match exactly. date: compared as calendar dates with a tolerance window. contains: matches if the shorter value is a prefix/suffix of the longer, after normalizing — e.g. a manifest subject number '007-001' vs an EDC export's '001'. Use 'contains' only for cross-checks, never to establish identity.">
+        <select data-field="type" title="exact: values must match exactly. date: compared as calendar dates with a day tolerance window, tolerant of cross-format input (CSV/XLSX, ISO/DD-Mon-YYYY/numeric). datetime: date + time compared together with a minute tolerance — still date-tolerant, and still flags ambiguous numeric dates (e.g. 03/04/2026) even with a time attached. time: time-of-day only (12hr or 24hr), with a minute tolerance — use for a field like actual draw time that isn't paired with a date in the same value. contains: matches if the shorter value is a prefix/suffix of the longer, after normalizing — e.g. a manifest subject number '007-001' vs an EDC export's '001'. Use 'contains' only for cross-checks, never to establish identity.">
           <option value="exact" ${r.type === "exact" ? "selected" : ""}>exact</option>
           <option value="date" ${r.type === "date" ? "selected" : ""}>date</option>
+          <option value="datetime" ${r.type === "datetime" ? "selected" : ""}>datetime</option>
+          <option value="time" ${r.type === "time" ? "selected" : ""}>time</option>
           <option value="contains" ${r.type === "contains" ? "selected" : ""}>contains (prefix/suffix)</option>
         </select>
-        <input type="number" min="0" data-field="toleranceDays" value="${r.toleranceDays || 0}" ${r.type === "date" ? "" : "disabled"}>
+        <div class="tol-cell">
+          <input type="number" min="0" data-field="toleranceDays" value="${r.toleranceDays || 0}" ${(r.type === "date" || r.type === "datetime" || r.type === "time") ? "" : "disabled"}>
+          <span class="tol-unit">${r.type === "date" ? "days" : (r.type === "datetime" || r.type === "time") ? "min" : ""}</span>
+        </div>
       </div>`).join("");
   }
 

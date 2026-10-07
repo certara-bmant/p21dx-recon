@@ -101,6 +101,54 @@ const ambiguousCase = P21Recon.compareField("2026-02-11", "11/02/2026", "date", 
 assert.strictEqual(ambiguousCase.ambiguous, true, "day-first vs month-first ambiguity must be flagged");
 console.log(`[PASS] Ambiguous numeric date order (11/02/2026) is flagged rather than silently assumed: ${JSON.stringify(ambiguousCase)}`);
 
+// ---- 2d. "datetime" field type — date + time together, minute tolerance ----
+// A 6-minute draw-time difference must mismatch at tolerance 0 but match once
+// tolerance covers it; this is the exact gap Ben raised (the "date" type collapses
+// same-day timestamps to a match because it discards time entirely).
+const sixMinApart = P21Recon.compareField("2026-02-11T14:36:00", "2026-02-11T14:30:00", "datetime", 0);
+assert.strictEqual(sixMinApart.status, "mismatch", `6-minute apart datetimes must mismatch at zero tolerance, got: ${JSON.stringify(sixMinApart)}`);
+assert.strictEqual(sixMinApart.diffMinutes, 6, `expected diffMinutes 6, got: ${JSON.stringify(sixMinApart)}`);
+const sixMinTolerant = P21Recon.compareField("2026-02-11T14:36:00", "2026-02-11T14:30:00", "datetime", 10);
+assert.strictEqual(sixMinTolerant.status, "match", `6-minute apart datetimes must match within a 10-minute tolerance, got: ${JSON.stringify(sixMinTolerant)}`);
+
+// cross-format datetimes, same instant, must still match (reuses parseCalendarDate's
+// format coverage for the date portion)
+const sameInstantFormats = P21Recon.compareField("2026-02-11T14:30:00", "11-Feb-2026 14:30", "datetime", 0);
+assert.strictEqual(sameInstantFormats.status, "match", `same instant across ISO/named-month formats must match, got: ${JSON.stringify(sameInstantFormats)}`);
+assert.strictEqual(sameInstantFormats.diffMinutes, 0);
+
+// ambiguous numeric date must still be flagged even with a time attached — this
+// was the actual gap: before datetime support existed, a trailing time pushed
+// ambiguous numeric dates through the native Date.parse fallback, silently
+// dropping the ambiguous flag.
+const ambiguousDatetime = P21Recon.compareField("03/04/2026 14:30", "03/04/2026 14:30", "datetime", 0);
+assert.strictEqual(ambiguousDatetime.ambiguous, true, `ambiguous numeric date must still be flagged when a time is attached, got: ${JSON.stringify(ambiguousDatetime)}`);
+
+// a bare date value (no time) is treated as midnight, so it can still be compared
+// against a true datetime field
+const dateOnlyVsMidnight = P21Recon.compareField("2026-02-11", "2026-02-11T00:00:00", "datetime", 0);
+assert.strictEqual(dateOnlyVsMidnight.status, "match", `bare date must be treated as midnight for datetime comparison, got: ${JSON.stringify(dateOnlyVsMidnight)}`);
+const dateOnlyVsMorning = P21Recon.compareField("2026-02-11", "2026-02-11T08:00:00", "datetime", 0);
+assert.strictEqual(dateOnlyVsMorning.status, "mismatch", `bare date (midnight) vs 08:00 must mismatch at zero tolerance, got: ${JSON.stringify(dateOnlyVsMorning)}`);
+console.log("[PASS] 'datetime' field type compares date+time with minute tolerance, preserves cross-format date matching, and still flags ambiguous numeric dates.");
+
+// ---- 2e. "time" field type — time-of-day only, no date component ----
+// For a field like "actual draw time" kept separate from the collection date.
+const timeCases = [
+  [["2:30 PM", "14:30"], "match", 0],      // 12hr vs 24hr equivalence
+  [["12:00 AM", "00:00"], "match", 0],     // midnight edge case
+  [["12:00 PM", "12:00"], "match", 0],     // noon edge case
+  [["09:05", "09:12"], "mismatch", 7],     // 7 min apart, default tolerance 0
+];
+timeCases.forEach(([[a, b], expectedStatus, expectedDiff]) => {
+  const r = P21Recon.compareField(a, b, "time", 0);
+  assert.strictEqual(r.status, expectedStatus, `"${a}" vs "${b}" (time) expected ${expectedStatus}, got: ${JSON.stringify(r)}`);
+  assert.strictEqual(r.diffMinutes, expectedDiff, `"${a}" vs "${b}" (time) expected diffMinutes ${expectedDiff}, got: ${JSON.stringify(r)}`);
+});
+const timeWithTolerance = P21Recon.compareField("09:05", "09:12", "time", 10);
+assert.strictEqual(timeWithTolerance.status, "match", `7-minute apart times must match within a 10-minute tolerance, got: ${JSON.stringify(timeWithTolerance)}`);
+console.log("[PASS] 'time' field type correctly compares time-of-day values (12hr/24hr equivalence, minute tolerance), independent of any date.");
+
 // fallback key should rescue ~nothing, proving subject/visit nomenclature alone is unusable here
 console.log(`Fallback-matched (low confidence) count: ${result.matchedLow.length} (expected 0 — subject ID formats never coincide)`);
 assert.strictEqual(result.matchedLow.length, 0);
